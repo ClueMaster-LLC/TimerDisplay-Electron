@@ -28,7 +28,7 @@ export default function Splash() {
     });
 
     return () => unsubscribe();
-  }, [navigate]);
+  }, []);
 
   return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-900 text-white">
