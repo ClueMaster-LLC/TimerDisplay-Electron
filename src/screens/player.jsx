@@ -20,7 +20,7 @@ export default function Player() {
 
     initializeWorkers();
 
-    const cleanup = window.WorkersBackend.onWorkerEvent((data) => {
+    const workersEventHandler = window.WorkersBackend.onWorkerEvent((data) => {
       switch (data.event) {
         case "reset":
           navigate("/");
@@ -31,8 +31,11 @@ export default function Player() {
       }
     });
 
-    return cleanup;
-  }, [navigate]);
+    return () => {
+      window.WorkersBackend.stop(["gameInfo"]);
+      workersEventHandler();
+    };
+  }, []);
 
   useEffect(() => {
     if (!gameInfo) {
