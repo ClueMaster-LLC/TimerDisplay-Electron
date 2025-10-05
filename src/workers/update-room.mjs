@@ -1,6 +1,6 @@
 import { parentPort } from "worker_threads";
 import { getStore } from "./worker-helpers.mjs";
-import { postDeviceAPI, deviceRequestAPI } from "../backends/apis.mjs";
+import { postDeviceAPI, downloadFilesRequestAPI } from "../backends/apis.mjs";
 import axios from "axios";
 
 let running = true;
@@ -8,16 +8,16 @@ let running = true;
 async function run() {
   const deviceUniqueID = await getStore("uniqueCode");
   const apiToken = await getStore("APIToken");
-  const deviceRequestAPIEndpoint = deviceRequestAPI.replace(
-    "{device_unique_code}",
+  const deviceRequestAPIEndpoint = downloadFilesRequestAPI.replace(
+    "{unique_code}",
     deviceUniqueID
   );
+
   const apiEndpointHeaders = {
     Authorization: `Basic ${deviceUniqueID}:${apiToken}`,
   };
 
   while (running) {
-    console.log("Worker: Checking for room update requests");
     try {
       const response = await axios.get(deviceRequestAPIEndpoint, {
         headers: apiEndpointHeaders,
@@ -29,11 +29,13 @@ async function run() {
         );
         parentPort.postMessage({ type: "event", event: "reset" });
       }
+
+      console.log(response.data);
       if (response.data && typeof response.data === "object") {
         const deviceRequestID = response.data.DeviceRequestid;
         const requestID = response.data.RequestID;
 
-        if (requestID == 15) {
+        if (requestID === 6) {
           const postDeviceAPIEndpoint = postDeviceAPI
             .replace("{device_unique_code}", deviceUniqueID)
             .replace("{deviceRequestId}", deviceRequestID);
@@ -42,7 +44,7 @@ async function run() {
             validateStatus: () => true,
           });
           if (request.status == 200) {
-            console.log("Worker: Video player files updated, reloading");
+            console.log("Worker: Files updated, reloading");
             parentPort.postMessage({ type: "event", event: "syncRequest" });
           }
         }
