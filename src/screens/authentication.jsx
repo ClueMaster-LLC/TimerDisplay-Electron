@@ -50,7 +50,7 @@ export default function Authentication() {
       statusEventHandler() 
       progressEventHandler()
     }
-  }, [navigate]);
+  }, []);
 
   return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#191F26] text-white">
