@@ -45,7 +45,7 @@ export default function Loading() {
       progressEventHandler();
       successEventHandler();
     };
-  }, [navigate]);
+  }, []);
 
   return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#191F26] text-white">
