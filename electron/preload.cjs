@@ -80,13 +80,14 @@ contextBridge.exposeInMainWorld("LoadingBackend", {
 });
 
 contextBridge.exposeInMainWorld("IdleBackend", {
-  getImage: () => ipcRenderer.invoke("idle:get-image"),
+  getMedia: () => ipcRenderer.invoke("idle:get-media"),
 });
 
 contextBridge.exposeInMainWorld("GameBackend", {
   getIntroVideo: () => ipcRenderer.invoke("game:get-intro-video"),
   getMainVideo: () => ipcRenderer.invoke("game:get-main-video"),
   getEndVideo: () => ipcRenderer.invoke("game:get-end-video"),
+  getBackgroundMusic: () => ipcRenderer.invoke("game:get-background-music"),
   introPostRequest: () => ipcRenderer.invoke("game:intro-post-request"),
   calculateInitialTimer: () =>
     ipcRenderer.invoke("game:calculate-initial-timer"),

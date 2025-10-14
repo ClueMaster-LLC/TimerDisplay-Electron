@@ -9,7 +9,7 @@ const masterDirectory = path.join(homeDirectory, "cluemaster-timer");
 const applicationData = path.join(masterDirectory, "application-data");
 const BASE_MEDIA_DIRECTORY = path.join(applicationData, "media-files");
 
-const getIdleImage = () => {
+const getIdleMedia = () => {
   try {
     const roomMediaFilesDirectory = path.join(
       BASE_MEDIA_DIRECTORY,
@@ -26,15 +26,26 @@ const getIdleImage = () => {
     if (files.length === 0) {
       return null;
     }
-    const imagePath = path.join(imageFilesDirectory, files[0]);
-    return `media://local/${imagePath}`;
+    const filePath = path.join(imageFilesDirectory, files[0]);
+    const relativePath = path.relative(BASE_MEDIA_DIRECTORY, filePath);
+    const mediaUrl = `media://local/${relativePath}`;
+
+    const fileExtension = path.extname(files[0]).toLowerCase();
+    const videoExtensions = [".mp4", ".webm", ".avi", ".mov", ".mkv", ".m4v"];
+    const isVideo = videoExtensions.includes(fileExtension);
+
+    return {
+      url: mediaUrl,
+      type: isVideo ? "video" : "image",
+      filename: files[0],
+    };
   } catch (error) {
-    console.error("Idle: Error getting image:", error);
+    console.error("Idle: Error getting media:", error);
     return null;
   }
 };
 
-ipcMain.handle("idle:get-image", () => {
-  const images = getIdleImage();
-  return images;
+ipcMain.handle("idle:get-media", () => {
+  const media = getIdleMedia();
+  return media;
 });

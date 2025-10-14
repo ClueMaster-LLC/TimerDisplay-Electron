@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useStoreValue } from "../state/store";
+import VideoPlayer from "./video-player";
 
 export default function Idle() {
   const roomConfig = useStoreValue("roomConfig");
-  const [backgroundImage, setBackgroundImage] = useState(null);
+  const [mediaData, setMediaData] = useState(null);
+  const videoRef = useRef(null);
 
   useEffect(() => {
     const initializeWorkers = async () => {
@@ -26,29 +28,53 @@ export default function Idle() {
   }, []);
 
   useEffect(() => {
-    const loadBackgroundImage = async () => {
-      if (!roomConfig?.isImage) {
-        setBackgroundImage(null);
+    const loadIdleMedia = async () => {
+      if (!roomConfig?.isImage && !roomConfig?.isVideo) {
+        setMediaData(null);
         return;
       }
 
       try {
-        const imagePath = await window.IdleBackend.getImage();
-        setBackgroundImage(imagePath);
+        const media = await window.IdleBackend.getMedia();
+        setMediaData(media);
       } catch (error) {
-        console.error("Idle: Error loading background image:", error);
-        setBackgroundImage(null);
+        console.error("Idle: Error loading media:", error);
+        setMediaData(null);
       }
     };
 
-    loadBackgroundImage();
-  }, [roomConfig?.isImage]);
+    loadIdleMedia();
+  }, [roomConfig?.isImage, roomConfig?.isVideo]);
 
-  if (backgroundImage) {
+  useEffect(() => {
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.currentTime = 0;
+      }
+    };
+  }, []);
+
+  if (mediaData?.type === "video") {
+    return (
+      <div className="idle-screen h-screen w-screen bg-gray-900">
+        <VideoPlayer
+          ref={videoRef}
+          src={mediaData.url}
+          autoplay={true}
+          loop={true}
+          muted={false}
+          className="w-full h-full object-cover"
+        />
+      </div>
+    );
+  }
+
+  if (mediaData?.type === "image") {
     return (
       <div className="idle-screen h-screen w-screen bg-gray-900">
         <img
-          src={backgroundImage}
+          src={mediaData.url}
           className="w-full h-full object-cover"
           alt="Background"
         />
