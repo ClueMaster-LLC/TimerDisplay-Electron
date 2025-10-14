@@ -70,6 +70,11 @@ const CountdownTimer = ({ onTimeEnd, onTimeUpdate }) => {
     }
   }, [timerState.setTime]);
 
+  // sync timer with store time when component mounts or timer state changes
+  useEffect(() => {
+    setTimeLeft(timerState.time);
+  }, [timerState.time]);
+
   // main timer countdown logic
   useEffect(() => {
     if (!timerState.paused && timeLeft > 0) {

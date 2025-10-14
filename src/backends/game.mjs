@@ -305,6 +305,40 @@ const calculateInitialTimerValue = async () => {
   }
 };
 
+const getBackgroundMusic = () => {
+  try {
+    const gameInfo = store.get("gameInfo");
+    if (!gameInfo?.isMusic) {
+      return null;
+    }
+
+    const roomMediaFilesDirectory = path.join(
+      BASE_MEDIA_DIRECTORY,
+      "room-media-files"
+    );
+    const musicFilesDirectory = path.join(
+      roomMediaFilesDirectory,
+      "music-files"
+    );
+
+    if (!fs.existsSync(musicFilesDirectory)) {
+      return null;
+    }
+
+    const files = fs.readdirSync(musicFilesDirectory);
+    if (files.length === 0) {
+      return null;
+    }
+
+    const musicPath = path.join(musicFilesDirectory, files[0]);
+    const relativePath = path.relative(BASE_MEDIA_DIRECTORY, musicPath);
+    return `media://local/${relativePath}`;
+  } catch (error) {
+    console.error("Game: Error getting background music:", error);
+    return null;
+  }
+};
+
 ipcMain.handle("game:get-intro-video", () => {
   return getIntroVideo();
 });
@@ -315,6 +349,10 @@ ipcMain.handle("game:get-end-video", () => {
 
 ipcMain.handle("game:get-main-video", () => {
   return getMainVideo();
+});
+
+ipcMain.handle("game:get-background-music", () => {
+  return getBackgroundMusic();
 });
 
 ipcMain.handle("game:intro-post-request", () => {

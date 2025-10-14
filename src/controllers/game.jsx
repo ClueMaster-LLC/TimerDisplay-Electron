@@ -3,94 +3,71 @@ import { useStoreValue, useGameActions } from "../state/store";
 import VideoPlayer from "./video-player";
 import Overlay from "./overlay";
 import CluePlayer from "./clue-player";
+import OverlayVideoPlayer from "./overlay-video-player";
 
 export default function Game({ gameInfo }) {
   const clue = useStoreValue("clue", null);
   const gameActions = useGameActions();
+
+  const [isGameActive, setIsGameActive] = useState(false);
+  const [timerInitialized, setTimerInitialized] = useState(false);
 
   const [videos, setVideos] = useState({
     intro: null,
     main: null,
     end: null,
   });
-  const [currentView, setCurrentView] = useState("main");
-  const [introPlayed, setIntroPlayed] = useState(false);
-  const [timerInitialized, setTimerInitialized] = useState(false);
+
+  const [overlayVideo, setOverlayVideo] = useState({
+    isVisible: false,
+    src: null,
+    type: null, // 'intro', 'end-win', 'end-loss'
+  });
+
+  const [backgroundMusic, setBackgroundMusic] = useState(null);
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
 
   const mainPlayerRef = useRef(null);
+  const musicRef = useRef(null);
 
-  // load all the video files when component starts
   useEffect(() => {
-    const loadInitialVideos = async () => {
-      try {
-        const [intro, main] = await Promise.all([
-          window.GameBackend.getIntroVideo(),
-          window.GameBackend.getMainVideo(),
-        ]);
-        setVideos((prev) => ({ ...prev, intro, main }));
-      } catch (error) {
-        console.error("Game: Error loading videos:", error);
+    const handleGameCommand = (event) => {
+      const { command, data } = event.detail;
+
+      switch (command) {
+        case "START_GAME":
+          handleStartGame(data);
+          break;
+        case "STOP_GAME":
+          handleStopGame();
+          break;
+        case "PLAY_END_VIDEO":
+          handlePlayEndVideo(data);
+          break;
+        case "RESET_GAME":
+          handleResetGame();
+          break;
+        case "PAUSE_GAME":
+          handlePauseGame();
+          break;
+        default:
+          console.warn("Unknown game command:", command);
       }
     };
 
-    const initializeWorkers = async () => {
-      try {
-        await window.WorkersBackend.start(["clue"]);
-      } catch (error) {
-        console.error("Game: Error starting workers:", error);
-      }
-    };
-
-    loadInitialVideos();
-    initializeWorkers();
-    setupTimerAPI();
-
-    return () => {
-      cleanupTimerAPI();
-    };
+    window.addEventListener("gameCommand", handleGameCommand);
+    return () => window.removeEventListener("gameCommand", handleGameCommand);
   }, []);
 
-  // watch for game status changes and do stuff accordingly
   useEffect(() => {
-    if (!gameInfo) return;
-    const { gameStatus, isIntro } = gameInfo;
-    let newView = "main";
-    let shouldShowOverlay = true;
-
-    if (gameStatus === 1 || gameStatus === 7) {
-      if (isIntro && videos.intro && !introPlayed) {
-        newView = "intro";
-        shouldShowOverlay = false;
-      }
-    } else if (gameStatus === 5 || gameStatus === 6) {
-      loadEndVideo();
-      if (videos.end) {
-        newView = "end";
-        shouldShowOverlay = false;
-      }
-    }
-
-    setCurrentView(newView);
-    gameActions.setOverlayVisible(shouldShowOverlay);
-
-    if (shouldShowOverlay && !timerInitialized) {
-      initializeTimer();
-      setTimerInitialized(true);
-    }
-
-    // pause or resume the game depending on status
-    if (gameStatus === 4) {
-      gameActions.pauseTimer();
-      pauseMainVideo();
-    } else if (gameStatus === 1) {
-      gameActions.resumeTimer();
-      resumeMainVideo();
-    }
-  }, [gameInfo, videos, introPlayed, timerInitialized]);
+    setupTimerAPI();
+    return () => cleanupTimerAPI();
+  }, []);
 
   useEffect(() => {
     if (!clue) {
       gameActions.hideClue();
+      unmuteBackgroundMusic();
       return;
     }
 
@@ -98,57 +75,183 @@ export default function Game({ gameInfo }) {
       displayClue(clue);
     } else {
       gameActions.hideClue();
+      unmuteBackgroundMusic();
     }
   }, [clue]);
 
-  const loadEndVideo = async () => {
-    if (videos.end) return;
+  // game command handlers
+  const handleStartGame = async (data) => {
+    setIsGameActive(true);
+
+    if (data.isIntro) {
+      await playIntroVideo();
+    } else {
+      await startMainGame();
+    }
+  };
+
+  const handleStopGame = () => {
+    setIsGameActive(false);
+
+    gameActions.hideClue();
+    gameActions.pauseTimer();
+    pauseMainVideo();
+    stopBackgroundMusic();
+
+    try {
+      window.WorkersBackend.stop(["clue"]);
+    } catch (error) {
+      console.error("Game: Error stopping clue worker:", error);
+    }
+  };
+
+  const handlePlayEndVideo = async (data) => {
+    handleStopGame();
 
     try {
       const endVideo = await window.GameBackend.getEndVideo();
-      setVideos((prev) => ({ ...prev, end: endVideo }));
+      if (endVideo) {
+        setVideos((prev) => ({ ...prev, end: endVideo }));
+        setOverlayVideo({
+          isVisible: true,
+          src: endVideo,
+          type: data.isWin ? "end-win" : "end-loss",
+        });
+      }
     } catch (error) {
       console.error("Game: Error loading end video:", error);
     }
   };
 
-  const displayClue = async (clueData) => {
+  const handleResetGame = () => {
+    gameActions.hideClue();
+    gameActions.pauseTimer();
+    pauseMainVideo();
+    stopBackgroundMusic();
+
+    setVideos({ intro: null, main: null, end: null });
+    setOverlayVideo({ isVisible: false, src: null, type: null });
+    setBackgroundMusic(null);
+    setIsMusicPlaying(false);
+    setTimerInitialized(false);
+
     try {
-      // this is just a text clue with no file
-      if (!clueData.clueFilename) {
-        if (clueData.clueText) {
-          gameActions.showClue("text", clueData.clueText, clueData);
-        }
-        return;
-      }
-
-      // this clue has a media file
-      const mediaSrc = await window.GameBackend.getClueMedia(clueData);
-      if (!mediaSrc) return;
-
-      const clueType = determineClueType(clueData);
-      gameActions.showClue(clueType, mediaSrc, clueData);
+      window.WorkersBackend.stop(["clue"]);
     } catch (error) {
-      console.error("Game: Error displaying clue:", error);
+      console.error("Game: Error stopping clue worker:", error);
     }
   };
 
-  const determineClueType = (clueData) => {
-    // first try to get type from the api
-    const apiType = clueData.clueType?.toLowerCase();
-    if (apiType === "message") return "text";
-    if (apiType === "video") return "video";
-    if (apiType === "audio") return "audio";
-    if (apiType === "image" || apiType === "photo") return "image";
+  const handlePauseGame = () => {
+    pauseMainVideo();
+    stopBackgroundMusic();
+    gameActions.pauseTimer();
+  };
 
-    // if that doesnt work check the file extension
-    const filename = clueData.clueFilename?.toLowerCase() || "";
-    if (filename.match(/\.(mp4|webm|avi|mov|mkv)$/)) return "video";
-    if (filename.match(/\.(mp3|wav|aac|m4a|ogg)$/)) return "audio";
-    if (filename.match(/\.gif$/)) return "gif";
-    if (filename.match(/\.(jpg|jpeg|png|bmp|svg|webp)$/)) return "image";
+  const playIntroVideo = async () => {
+    try {
+      const introVideo = await window.GameBackend.getIntroVideo();
+      if (introVideo) {
+        setVideos((prev) => ({ ...prev, intro: introVideo }));
+        setOverlayVideo({
+          isVisible: true,
+          src: introVideo,
+          type: "intro",
+        });
+      } else {
+        await startMainGame();
+      }
+    } catch (error) {
+      console.error("Game: Error loading intro video:", error);
+      await startMainGame();
+    }
+  };
 
-    return "image"; // just assume its an image if we cant figure it out
+  const startMainGame = async () => {
+    try {
+      const [mainVideo, music] = await Promise.all([
+        window.GameBackend.getMainVideo(),
+        window.GameBackend.getBackgroundMusic(),
+      ]);
+
+      if (gameInfo?.isVideo) {
+        setVideos((prev) => ({ ...prev, main: mainVideo }));
+      }
+      if (gameInfo?.isMusic) {
+        setBackgroundMusic(music);
+      }
+
+      await window.WorkersBackend.start(["clue"]);
+    } catch (error) {
+      console.error("Game: Error starting main game:", error);
+    }
+
+    if (!timerInitialized) {
+      await initializeTimer();
+      setTimerInitialized(true);
+    }
+
+    if (gameInfo?.isVideo) {
+      resumeMainVideo();
+    }
+
+    gameActions.resumeTimer();
+    gameActions.setOverlayVisible(true);
+    if (gameInfo?.isMusic) {
+      startBackgroundMusic();
+    }
+  };
+
+  const handleOverlayVideoEnd = async () => {
+    const { type } = overlayVideo;
+
+    setOverlayVideo({
+      isVisible: false,
+      src: null,
+      type: null,
+    });
+
+    if (type === "intro") {
+      try {
+        await window.GameBackend.introPostRequest();
+        await startMainGame();
+      } catch (error) {
+        console.error("Game: Error sending intro post request:", error);
+        await startMainGame();
+      }
+    } else if (type === "end-win" || type === "end-loss") {
+      gameActions.setOverlayVisible(true);
+    }
+  };
+
+  const startBackgroundMusic = () => {
+    if (backgroundMusic && musicRef.current && !isMusicPlaying) {
+      console.log("Game: Starting background music");
+      musicRef.current.currentTime = 0;
+      musicRef.current.play();
+      setIsMusicPlaying(true);
+    }
+  };
+
+  const stopBackgroundMusic = () => {
+    if (musicRef.current && isMusicPlaying) {
+      console.log("Game: Stopping background music");
+      musicRef.current.pause();
+      musicRef.current.currentTime = 0;
+      setIsMusicPlaying(false);
+    }
+  };
+
+  const muteBackgroundMusic = () => {
+    if (musicRef.current) {
+      musicRef.current.muted = true;
+    }
+  };
+
+  const unmuteBackgroundMusic = () => {
+    if (musicRef.current) {
+      musicRef.current.muted = false;
+    }
   };
 
   const initializeTimer = async () => {
@@ -173,23 +276,6 @@ export default function Game({ gameInfo }) {
     });
   };
 
-  const handleIntroEnd = async () => {
-    setIntroPlayed(true);
-    setCurrentView("main");
-    gameActions.setOverlayVisible(true);
-
-    try {
-      await window.GameBackend.introPostRequest();
-    } catch (error) {
-      console.error("Game: Error sending intro post request:", error);
-    }
-
-    if (!timerInitialized) {
-      initializeTimer();
-      setTimerInitialized(true);
-    }
-  };
-
   const handleTimerEnd = async () => {
     gameActions.pauseTimer();
     pauseMainVideo();
@@ -199,6 +285,43 @@ export default function Game({ gameInfo }) {
     } catch (error) {
       console.error("Game: Error sending timer end request:", error);
     }
+  };
+
+  const displayClue = async (clueData) => {
+    try {
+      if (!clueData.clueFilename) {
+        if (clueData.clueText) {
+          gameActions.showClue("text", clueData.clueText, clueData);
+        }
+        return;
+      }
+
+      const mediaSrc = await window.GameBackend.getClueMedia(clueData);
+      if (!mediaSrc) return;
+
+      const clueType = determineClueType(clueData);
+      gameActions.showClue(clueType, mediaSrc, clueData);
+
+      muteBackgroundMusic();
+    } catch (error) {
+      console.error("Game: Error displaying clue:", error);
+    }
+  };
+
+  const determineClueType = (clueData) => {
+    const apiType = clueData.clueType?.toLowerCase();
+    if (apiType === "message") return "text";
+    if (apiType === "video") return "video";
+    if (apiType === "audio") return "audio";
+    if (apiType === "image" || apiType === "photo") return "image";
+
+    const filename = clueData.clueFilename?.toLowerCase() || "";
+    if (filename.match(/\.(mp4|webm|avi|mov|mkv)$/)) return "video";
+    if (filename.match(/\.(mp3|wav|aac|m4a|ogg)$/)) return "audio";
+    if (filename.match(/\.gif$/)) return "gif";
+    if (filename.match(/\.(jpg|jpeg|png|bmp|svg|webp)$/)) return "image";
+
+    return "image";
   };
 
   const setupTimerAPI = () => {
@@ -216,49 +339,37 @@ export default function Game({ gameInfo }) {
     delete window.GameTimer;
   };
 
-  const renderCurrentView = () => {
-    switch (currentView) {
-      case "intro":
-        return (
-          <VideoPlayer
-            src={videos.intro}
-            autoplay={true}
-            muted={true}
-            onVideoEnd={handleIntroEnd}
-            className="w-full h-full object-cover"
-          />
-        );
-      case "end":
-        return (
-          <VideoPlayer
-            src={videos.end}
-            autoplay={true}
-            muted={true}
-            className="w-full h-full object-cover"
-          />
-        );
-      default:
-        return null;
-    }
-  };
-
   return (
     <div className="game-screen h-screen w-screen bg-black relative">
-      {/* main background video that loops */}
-      {videos.main && (
+      {videos.main && gameInfo?.isVideo && (
         <div className="absolute inset-0 z-0">
           <VideoPlayer
             ref={mainPlayerRef}
             src={videos.main}
             autoplay={true}
             loop={true}
-            muted={true}
+            muted={false}
             className="w-full h-full object-cover"
           />
         </div>
       )}
 
-      <div className="absolute inset-0 z-10">{renderCurrentView()}</div>
+      <OverlayVideoPlayer
+        src={overlayVideo.src}
+        isVisible={overlayVideo.isVisible}
+        onVideoEnd={handleOverlayVideoEnd}
+      />
+
+      {backgroundMusic && (
+        <audio
+          ref={musicRef}
+          src={backgroundMusic}
+          loop={true}
+          muted={false}
+          preload="auto"
+        />
+      )}
+
       <Overlay gameInfo={gameInfo} onTimerEnd={handleTimerEnd} />
       <CluePlayer mainPlayerRef={mainPlayerRef} />
     </div>
