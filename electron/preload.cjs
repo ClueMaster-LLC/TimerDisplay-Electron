@@ -88,11 +88,15 @@ contextBridge.exposeInMainWorld("GameBackend", {
   getMainVideo: () => ipcRenderer.invoke("game:get-main-video"),
   getEndVideo: () => ipcRenderer.invoke("game:get-end-video"),
   getBackgroundMusic: () => ipcRenderer.invoke("game:get-background-music"),
+  getCustomClueAlertAudio: () =>
+    ipcRenderer.invoke("game:get-custom-clue-alert-audio"),
   introPostRequest: () => ipcRenderer.invoke("game:intro-post-request"),
   calculateInitialTimer: () =>
     ipcRenderer.invoke("game:calculate-initial-timer"),
   getClueMedia: (clueData) =>
     ipcRenderer.invoke("game:get-clue-media", clueData),
+  postClueStatus: (gameId, clueId) =>
+    ipcRenderer.invoke("game:post-clue-status", gameId, clueId),
 });
 
 contextBridge.exposeInMainWorld("WorkersBackend", {

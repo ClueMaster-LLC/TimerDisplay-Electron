@@ -11,7 +11,7 @@ async function run() {
   const headers = { Authorization: `Basic ${deviceUniqueID}:${apiToken}` };
 
   while (running) {
-    console.log("Worker: Fetching game info");
+    // console.log("Worker: Fetching game info");
     try {
       const gameDetailsAPIEndpoint = gameDetailsAPI.replace(
         "{}",

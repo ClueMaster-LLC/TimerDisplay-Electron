@@ -3,6 +3,7 @@ import {
   gameIntroRequestAPI,
   postDeviceAPI,
   getGameStartEndTimeAPI,
+  postGameClueStatusAPI,
 } from "./apis.mjs";
 import store from "./state.mjs";
 import path from "path";
@@ -231,10 +232,57 @@ const introPostRequest = async () => {
   }
 };
 
+const postGameClueStatus = async (gameId, clueId) => {
+  try {
+    const deviceUniqueID = store.get("uniqueCode");
+    const apiToken = store.get("APIToken");
+    const headers = { Authorization: `Basic ${deviceUniqueID}:${apiToken}` };
+
+    if (!gameId || !clueId) {
+      console.log(
+        "Game: Missing gameId or clueId for clue status post request"
+      );
+      return null;
+    }
+
+    const clueStatusEndpoint = postGameClueStatusAPI
+      .replace("{game_ids}", gameId)
+      .replace("{clue_ids}", clueId);
+
+    const response = await axios.post(clueStatusEndpoint, null, {
+      headers,
+      validateStatus: () => true,
+    });
+
+    if (response.status === 401) {
+      console.log("Game: Unauthorized clue status post request");
+      return null;
+    }
+
+    if (response.status === 200) {
+      console.log(
+        "Game: Clue status post request successful, response:",
+        response.data
+      );
+      return true;
+    } else {
+      console.log(
+        "Game: Clue status post request failed with status:",
+        response.status
+      );
+      return null;
+    }
+  } catch (error) {
+    console.error("Game: Error on clue status post request:", error);
+    return null;
+  }
+};
+
 const getGameStartEndTime = async () => {
   try {
     const deviceUniqueID = store.get("uniqueCode");
     const apiToken = store.get("APIToken");
+    const gameInfo = store.get("gameInfo");
 
     if (!deviceUniqueID || !apiToken) {
       console.error(
@@ -244,7 +292,7 @@ const getGameStartEndTime = async () => {
     }
 
     const headers = { Authorization: `Basic ${deviceUniqueID}:${apiToken}` };
-    const endpoint = getGameStartEndTimeAPI.replace("{}", deviceUniqueID);
+    const endpoint = getGameStartEndTimeAPI.replace("{}", gameInfo.gameId);
 
     console.log("Game: Fetching game start/end time from:", endpoint);
     const response = await axios.get(endpoint, {
@@ -273,34 +321,26 @@ const calculateInitialTimerValue = async () => {
     const gameTimeData = await getGameStartEndTime();
 
     if (!gameTimeData) {
-      console.log(
-        "Game: no game time data available, using default timer value"
-      );
+      console.log("no game time data, using default 300");
       return 300; // 5 minutes default
     }
 
     const now = new Date();
-    const gameEndTime = new Date(gameTimeData.gameEndDateTime);
+    const gameEndTime = new Date(gameTimeData.gameEndDateTime + "Z");
 
-    // calculate remaining time in seconds
     const remainingTimeMs = gameEndTime.getTime() - now.getTime();
     const remainingTimeSeconds = Math.floor(remainingTimeMs / 1000);
 
-    console.log("Game: Timer calculation:", {
-      now: now.toISOString(),
-      gameEndTime: gameEndTime.toISOString(),
-      remainingTimeMs,
-      remainingTimeSeconds,
-    });
-
     if (remainingTimeSeconds <= 0) {
-      console.log("Game: game time has expired, setting timer to 0");
       return 0;
     }
 
+    store.set("gameEndTime", gameTimeData.gameEndDateTime);
+    console.log("stored gameEndTime:", gameTimeData.gameEndDateTime);
+
     return remainingTimeSeconds;
   } catch (error) {
-    console.error("Game: error calculating initial timer value:", error);
+    console.error("Error:", error);
     return 300; // default fallback
   }
 };
@@ -331,10 +371,41 @@ const getBackgroundMusic = () => {
     }
 
     const musicPath = path.join(musicFilesDirectory, files[0]);
+    console.log("Game: Background music path:", musicPath);
     const relativePath = path.relative(BASE_MEDIA_DIRECTORY, musicPath);
+    console.log("Game: Background music relative path:", relativePath);
     return `media://local/${relativePath}`;
   } catch (error) {
     console.error("Game: Error getting background music:", error);
+    return null;
+  }
+};
+
+const getCustomClueAlertAudio = () => {
+  try {
+    const roomMediaFilesDirectory = path.join(
+      BASE_MEDIA_DIRECTORY,
+      "room-media-files"
+    );
+    const customClueMediaDirectory = path.join(
+      roomMediaFilesDirectory,
+      "custom-clue-media"
+    );
+
+    if (!fs.existsSync(customClueMediaDirectory)) {
+      return null;
+    }
+
+    const files = fs.readdirSync(customClueMediaDirectory);
+    if (files.length === 0) {
+      return null;
+    }
+
+    const audioPath = path.join(customClueMediaDirectory, files[0]);
+    const relativePath = path.relative(BASE_MEDIA_DIRECTORY, audioPath);
+    return `media://local/${relativePath}`;
+  } catch (error) {
+    console.error("Game: Error getting custom clue alert audio:", error);
     return null;
   }
 };
@@ -355,12 +426,20 @@ ipcMain.handle("game:get-background-music", () => {
   return getBackgroundMusic();
 });
 
+ipcMain.handle("game:get-custom-clue-alert-audio", () => {
+  return getCustomClueAlertAudio();
+});
+
 ipcMain.handle("game:intro-post-request", () => {
   return introPostRequest();
 });
 
 ipcMain.handle("game:calculate-initial-timer", () => {
   return calculateInitialTimerValue();
+});
+
+ipcMain.handle("game:post-clue-status", (event, gameId, clueId) => {
+  return postGameClueStatus(gameId, clueId);
 });
 
 ipcMain.handle("game:get-clue-media", (event, clueData) => {

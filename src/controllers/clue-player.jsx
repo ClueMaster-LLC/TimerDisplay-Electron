@@ -1,20 +1,91 @@
 import React, { useEffect, useRef } from "react";
-import { useClueState, useGameActions } from "../state/store";
+import { useClueState, useGameActions, useStoreValue } from "../state/store";
 import VideoPlayer from "./video-player";
 
 export default function CluePlayer({ mainPlayerRef }) {
   const clueState = useClueState();
   const gameActions = useGameActions();
+  const gameInfo = useStoreValue("gameInfo", null);
+  const roomConfig = useStoreValue("roomConfig", null);
   const videoRef = useRef(null);
   const audioRef = useRef(null);
+  const alertAudioRef = useRef(null);
 
-  const handleClueEnd = () => {
-    const { type } = clueState;
+  const playTextClueAlert = async () => {
+    try {
+      if (!roomConfig?.isTVClueAlert) {
+        const defaultAlertSrc = "./assets/MessageAlert.mp3";
+        if (alertAudioRef.current) {
+          alertAudioRef.current.src = defaultAlertSrc;
+          alertAudioRef.current.play();
+        }
+        return;
+      }
+
+      const customAlertSrc = await window.GameBackend.getCustomClueAlertAudio();
+      if (customAlertSrc) {
+        if (alertAudioRef.current) {
+          alertAudioRef.current.src = customAlertSrc;
+          alertAudioRef.current.play();
+        }
+      } else {
+        const defaultAlertSrc = "./assets/MessageAlert.mp3";
+        console.log(
+          "Custom alert not found, playing default:",
+          defaultAlertSrc
+        );
+        if (alertAudioRef.current) {
+          alertAudioRef.current.src = defaultAlertSrc;
+          alertAudioRef.current.play();
+        }
+      }
+    } catch (error) {
+      console.error("Error playing text clue alert:", error);
+      const defaultAlertSrc = "./assets/MessageAlert.mp3";
+      if (alertAudioRef.current) {
+        alertAudioRef.current.src = defaultAlertSrc;
+        alertAudioRef.current.play();
+      }
+    }
+  };
+
+  const handleClueEnd = async () => {
+    const { type, data } = clueState;
+
     // videos and audio should close themselves when done
     if (type === "video" || type === "audio") {
+      // Get gameId from gameInfo and clueId from data
+      const gameId = data?.gameId || gameInfo?.gameId;
+      const clueId = data?.clueId || data?.gameClueId;
+
+      if (gameId && clueId) {
+        try {
+          await window.GameBackend.postClueStatus(gameId, clueId);
+        } catch (error) {
+          console.error("Error notifying API about clue completion:", error);
+        }
+      } else {
+        console.log("Missing gameId or clueId for API call", {
+          gameId,
+          clueId,
+        });
+      }
       gameActions.hideClue();
     }
   };
+
+  useEffect(() => {
+    if (clueState.isActive && clueState.type === "text") {
+      playTextClueAlert();
+    }
+  }, [clueState.isActive, clueState.type]);
+
+  // unmute background music when clue ends
+  useEffect(() => {
+    if (!clueState.isActive) {
+      window.dispatchEvent(new CustomEvent("unmuteBackgroundMusic"));
+    }
+  }, [clueState.isActive]);
 
   // mute the background video when showing visual clues
   useEffect(() => {
@@ -87,7 +158,7 @@ export default function CluePlayer({ mainPlayerRef }) {
             className="absolute bottom-0 left-0 right-0"
             style={{ height: "45vh" }}
           >
-            <div className="h-full bg-black bg-opacity-90 flex items-center justify-center px-8">
+            <div className="h-full bg-black/50 backdrop-blur-sm flex items-center justify-center px-8">
               <div className="max-w-4xl w-full p-8">
                 <div className="text-center">
                   <p className="text-2xl text-white leading-relaxed whitespace-pre-wrap">
@@ -109,5 +180,10 @@ export default function CluePlayer({ mainPlayerRef }) {
     return renderClueContent();
   }
 
-  return <div className="absolute inset-0 z-30">{renderClueContent()}</div>;
+  return (
+    <div className="absolute inset-0 z-30">
+      {renderClueContent()}
+      <audio ref={alertAudioRef} preload="auto" style={{ display: "none" }} />
+    </div>
+  );
 }

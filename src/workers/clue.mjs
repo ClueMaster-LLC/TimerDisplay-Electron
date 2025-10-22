@@ -13,7 +13,7 @@ async function run() {
   const headers = { Authorization: `Basic ${deviceUniqueID}:${apiToken}` };
 
   while (running) {
-    console.log("Worker: Checking for game clues");
+    // console.log("Worker: Checking for game clues");
     try {
       if (gameId === null) return;
       const getGameClueAPIEndpoint = gameClueAPI.replace(
@@ -57,7 +57,7 @@ async function run() {
         parentPort.postMessage({ type: "event", event: "connectionRestored" });
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 }
 

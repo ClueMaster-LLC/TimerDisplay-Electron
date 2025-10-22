@@ -133,7 +133,7 @@ export default function Player() {
         window.dispatchEvent(
           new CustomEvent("gameCommand", {
             detail: {
-              command: "START_GAME",
+              command: "RESUME_GAME",
               data: { isIntro: shouldPlayIntro },
             },
           })

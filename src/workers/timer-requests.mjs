@@ -11,7 +11,7 @@ async function run() {
   const headers = { Authorization: `Basic ${deviceUniqueID}:${apiToken}` };
 
   while (running) {
-    console.log("Worker: Checking for timer requests");
+    // console.log("Worker: Checking for timer requests");
     try {
       const getTimerRequestAPIEndpoint = getTimerRequestAPI.replace(
         "{}",
@@ -33,7 +33,7 @@ async function run() {
           .replace("{device_unique_code}", deviceUniqueID)
           .replace("{deviceRequestId}", deviceRequestID);
         const request = await axios.post(postDeviceAPIEndpoint, null, {
-          headers: apiEndpointHeaders,
+          headers,
           validateStatus: () => true,
         });
         if (request.status === 200) {

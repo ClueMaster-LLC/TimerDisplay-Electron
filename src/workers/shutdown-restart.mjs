@@ -17,7 +17,7 @@ async function run() {
   };
 
   while (running) {
-    console.log("Worker: Checking for shutdown/restart requests");
+    // console.log("Worker: Checking for shutdown/restart requests");
     try {
       const response = await axios.get(shutdownRestartAPIEndpoint, {
         headers: apiEndpointHeaders,

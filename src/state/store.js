@@ -12,6 +12,7 @@ const useAppStore = create(
       initialTime: 300,
       paused: false,
       setTime: null, // trigger for direct time setting
+      gameEndTime: null, // store the game end time for real-time calculation
     },
 
     overlay: {
@@ -30,6 +31,7 @@ const useAppStore = create(
     actions: {
       // timer actions
       setTimerTime: (time) => {
+        console.log("📊 STORE: setTimerTime called with:", time);
         set((state) => ({
           timer: {
             ...state.timer,
@@ -44,6 +46,15 @@ const useAppStore = create(
             timer: { ...state.timer, setTime: null },
           }));
         }, 100);
+      },
+
+      setGameEndTime: (gameEndTime) => {
+        set((state) => ({
+          timer: {
+            ...state.timer,
+            gameEndTime,
+          },
+        }));
       },
 
       pauseTimer: () => {

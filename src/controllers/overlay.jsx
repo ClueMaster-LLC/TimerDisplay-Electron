@@ -5,11 +5,11 @@ const ClueIcon = ({ size, isUsed = false }) => (
   <div
     className={`
       rounded-full border-2 flex items-center justify-center
-      transition-all duration-300 font-bold
+      transition-all duration-300 font-bold backdrop-blur-sm
       ${
         isUsed
-          ? "bg-gray-500 border-gray-400 text-gray-300"
-          : "bg-black border-gray-600 text-white"
+          ? "bg-gray-300/30 border-gray-400/30 text-gray-500"
+          : "bg-slate-800/40 border-slate-600/40 text-white"
       }
     `}
     style={{
@@ -29,9 +29,21 @@ const ClueIconGrid = ({
 }) => {
   if (totalClues === 0) return null;
 
-  const iconSize =
-    totalClues <= 4 ? 60 : totalClues <= 6 ? 50 : totalClues <= 8 ? 45 : 40;
-  const gap = Math.max(8, iconSize / 5);
+  const getResponsiveIconSize = () => {
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    const minDimension = Math.min(screenWidth, screenHeight);
+
+    let baseSize = Math.max(60, minDimension * 0.08);
+
+    if (totalClues <= 4) return Math.min(baseSize * 1.2, 100);
+    if (totalClues <= 6) return Math.min(baseSize * 1.0, 90);
+    if (totalClues <= 8) return Math.min(baseSize * 0.9, 80);
+    return Math.min(baseSize * 0.8, 70);
+  };
+
+  const iconSize = getResponsiveIconSize();
+  const gap = Math.max(12, iconSize / 4);
 
   const clueIcons = Array.from({ length: totalClues }, (_, index) => (
     <ClueIcon key={index} size={iconSize} isUsed={index < usedClues} />
@@ -80,15 +92,30 @@ const CountdownTimer = ({ onTimeEnd, onTimeUpdate }) => {
     if (!timerState.paused && timeLeft > 0) {
       intervalRef.current = setInterval(() => {
         setTimeLeft((prev) => {
-          const newTime = prev - 1;
-          onTimeUpdate?.(newTime);
+          if (timerState.gameEndTime) {
+            const now = new Date();
+            const gameEndTime = new Date(timerState.gameEndTime + "Z");
+            const remainingTimeMs = gameEndTime.getTime() - now.getTime();
+            const remainingTimeSeconds = Math.floor(remainingTimeMs / 1000);
 
-          if (newTime <= 0) {
-            onTimeEnd?.();
-            return 0;
+            if (remainingTimeSeconds <= 0) {
+              onTimeEnd?.();
+              return 0;
+            }
+
+            onTimeUpdate?.(remainingTimeSeconds);
+            return remainingTimeSeconds;
+          } else {
+            const newTime = prev - 1;
+            onTimeUpdate?.(newTime);
+
+            if (newTime <= 0) {
+              onTimeEnd?.();
+              return 0;
+            }
+
+            return newTime;
           }
-
-          return newTime;
         });
       }, 1000);
     } else {
@@ -103,7 +130,13 @@ const CountdownTimer = ({ onTimeEnd, onTimeUpdate }) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [timerState.paused, timeLeft, onTimeEnd, onTimeUpdate]);
+  }, [
+    timerState.paused,
+    timeLeft,
+    timerState.gameEndTime,
+    onTimeEnd,
+    onTimeUpdate,
+  ]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -114,14 +147,12 @@ const CountdownTimer = ({ onTimeEnd, onTimeUpdate }) => {
   };
 
   const getTimerColor = () => {
-    if (timeLeft <= 30) return "text-red-500";
-    if (timeLeft <= 60) return "text-yellow-500";
     return "text-white";
   };
 
   return (
     <div
-      className={`text-8xl font-mono font-bold ${getTimerColor()} transition-colors duration-300`}
+      className={`text-9xl font-mono font-bold ${getTimerColor()} transition-colors duration-300`}
     >
       {formatTime(timeLeft)}
     </div>
