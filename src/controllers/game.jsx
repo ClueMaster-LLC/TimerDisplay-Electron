@@ -26,24 +26,6 @@ export default function Game({ gameInfo }) {
   });
 
   const [backgroundMusic, setBackgroundMusic] = useState(null);
-  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
-
-  useEffect(() => {
-    if (
-      backgroundMusic &&
-      gameInfo?.isMusic &&
-      isGameActive &&
-      !isMusicPlaying
-    ) {
-      startBackgroundMusic();
-    }
-  }, [backgroundMusic, gameInfo?.isMusic, isGameActive, isMusicPlaying]);
-
-  useEffect(() => {
-    if (!isGameActive && isMusicPlaying) {
-      stopBackgroundMusic();
-    }
-  }, [isGameActive, isMusicPlaying]);
 
   const mainPlayerRef = useRef(null);
   const musicRef = useRef(null);
@@ -100,6 +82,9 @@ export default function Game({ gameInfo }) {
         data.component === "timer" &&
         data.action === "update"
       ) {
+        console.log(
+          "🔄 TIMER UPDATE: Worker triggered but no action needed (using real-time calculation)"
+        );
       }
     };
 
@@ -187,7 +172,6 @@ export default function Game({ gameInfo }) {
     setVideos({ intro: null, main: null, end: null });
     setOverlayVideo({ isVisible: false, src: null, type: null });
     setBackgroundMusic(null);
-    setIsMusicPlaying(false);
     setTimerInitialized(false);
     setIsPaused(false);
 
@@ -203,14 +187,6 @@ export default function Game({ gameInfo }) {
     pauseBackgroundMusic();
     gameActions.pauseTimer();
     setIsPaused(true);
-    try {
-      const latestTime = await window.GameBackend.calculateInitialTimer();
-      if (latestTime !== null) {
-        gameActions.setTimerTime(latestTime);
-      }
-    } catch (error) {
-      console.error("Game: Error fetching latest time on pause:", error);
-    }
   };
 
   const playIntroVideo = async () => {
@@ -247,13 +223,11 @@ export default function Game({ gameInfo }) {
       }
 
       await window.WorkersBackend.start(["clue", "timerRequests"]);
-    } catch (error) {
-      console.error("Game: Error starting main game:", error);
-    }
+    } catch (error) {}
+
     await initializeTimer();
     setTimerInitialized(true);
 
-    // if we were paused, reset the paused state
     if (isPaused) {
       setIsPaused(false);
     }
@@ -262,9 +236,12 @@ export default function Game({ gameInfo }) {
       resumeMainVideo();
     }
 
-    // resume background music if it was playing before pause
-    if (gameInfo?.isMusic && backgroundMusic) {
-      resumeBackgroundMusic();
+    if (gameInfo?.isMusic) {
+      if (isPaused) {
+        resumeBackgroundMusic();
+      } else {
+        playBackgroundMusic();
+      }
     }
 
     gameActions.resumeTimer();
@@ -293,52 +270,35 @@ export default function Game({ gameInfo }) {
     }
   };
 
-  const startBackgroundMusic = () => {
-    if (backgroundMusic && musicRef.current && !isMusicPlaying) {
-      musicRef.current.currentTime = 0;
-      const playPromise = musicRef.current.play();
-      playPromise
-        ?.then(() => {
-          console.log("Game: Background music started successfully");
-          setIsMusicPlaying(true);
-        })
-        .catch((error) => {
-          console.error("Game: Error playing background music:", error);
-        });
-    } else {
-      console.log("Game: Cannot start background music - missing requirements");
+  const playBackgroundMusic = () => {
+    if (musicRef.current && !musicRef.current.paused) {
+      return;
+    }
+    if (musicRef.current) {
+      musicRef.current.play().catch((error) => {
+        console.error("Game: Error playing background music:", error);
+      });
     }
   };
 
   const stopBackgroundMusic = () => {
-    if (musicRef.current && isMusicPlaying) {
-      console.log("Game: Stopping background music");
+    if (musicRef.current) {
       musicRef.current.pause();
       musicRef.current.currentTime = 0;
-      setIsMusicPlaying(false);
     }
   };
 
   const pauseBackgroundMusic = () => {
-    if (musicRef.current && isMusicPlaying) {
-      console.log("Game: Pausing background music");
+    if (musicRef.current) {
       musicRef.current.pause();
-      setIsMusicPlaying(false);
     }
   };
 
   const resumeBackgroundMusic = () => {
-    if (musicRef.current && backgroundMusic && !isMusicPlaying) {
-      console.log("Game: Resuming background music");
-      const playPromise = musicRef.current.play();
-      playPromise
-        ?.then(() => {
-          console.log("Game: Background music resumed successfully");
-          setIsMusicPlaying(true);
-        })
-        .catch((error) => {
-          console.error("Game: Error resuming background music:", error);
-        });
+    if (musicRef.current) {
+      musicRef.current.play().catch((error) => {
+        console.error("Game: Error resuming background music:", error);
+      });
     }
   };
 
@@ -356,16 +316,14 @@ export default function Game({ gameInfo }) {
 
   const initializeTimer = async () => {
     try {
-      const initialTime = await window.GameBackend.calculateInitialTimer();
-      if (initialTime !== null) {
-        gameActions.setTimerTime(initialTime);
-        const gameEndTime = await window.StoreBackend.get("gameEndTime");
-        if (gameEndTime) {
-          gameActions.setGameEndTime(gameEndTime);
-        }
+      const freshGameInfo = await window.StoreBackend.get("gameInfo");
+      const gameEndDateTime = freshGameInfo?.gameEndDateTime;
+      if (gameEndDateTime) {
+        gameActions.setGameEndTime(gameEndDateTime);
+      } else {
       }
     } catch (error) {
-      console.error("Timer: Error:", error);
+      console.error("Timer init: Error:", error);
     }
   };
 
@@ -384,11 +342,13 @@ export default function Game({ gameInfo }) {
     gameActions.pauseTimer();
     pauseMainVideo();
     stopBackgroundMusic();
+
+    // simulate status 5 (game ended) by dispatching the end video command
     window.dispatchEvent(
       new CustomEvent("gameCommand", {
         detail: {
           command: "PLAY_END_VIDEO",
-          data: { isWin: false }, // timer ended = loss
+          data: { isWin: false },
         },
       })
     );

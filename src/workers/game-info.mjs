@@ -28,8 +28,27 @@ async function run() {
         const gameStatus = response.data.gameStatus;
         const cluesUsed = response.data.noOfCluesUsed;
         const currentGameInfo = await getStore("gameInfo");
+
+        // check if gameEndDateTime changed
+        const oldEndTime = currentGameInfo?.gameEndDateTime;
+        const newEndTime = response.data.gameEndDateTime;
+
+        if (oldEndTime !== newEndTime) {
+          console.log("WORKER: gameEndDateTime CHANGED", {
+            old: oldEndTime,
+            new: newEndTime,
+          });
+        }
+
         if (JSON.stringify(currentGameInfo) !== JSON.stringify(response.data)) {
           await setStore("gameInfo", response.data);
+        } else {
+          if (oldEndTime !== newEndTime) {
+            console.log(
+              "WORKER: gameEndDateTime changed but JSON.stringify blocked update! Forcing update..."
+            );
+            await setStore("gameInfo", response.data);
+          }
         }
 
         if (cluesUsed !== null) {
@@ -54,7 +73,7 @@ async function run() {
       }
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 }
 

@@ -29,7 +29,7 @@ async function run() {
       }
       if (response.data.hasOwnProperty("status") === false) {
         const clue = response.data;
-        console.log("Worker: New clue received:", clue);
+        // console.log("Worker: New clue received:", clue);
         const clueId = clue.gameClueId;
         // post request to acknowledge clue received
         const postGameClueAPIEndpoint = postGameClueAPI

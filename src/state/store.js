@@ -8,11 +8,9 @@ const useAppStore = create(
 
     // game control state (client-side only)
     timer: {
-      time: 300,
-      initialTime: 300,
+      time: 0,
       paused: false,
-      setTime: null, // trigger for direct time setting
-      gameEndTime: null, // store the game end time for real-time calculation
+      gameEndTime: null, // store the game end time (UTC) for real-time calculation
     },
 
     overlay: {
@@ -36,16 +34,8 @@ const useAppStore = create(
           timer: {
             ...state.timer,
             time,
-            initialTime: time,
-            setTime: time,
           },
         }));
-        // clear trigger after brief moment
-        setTimeout(() => {
-          set((state) => ({
-            timer: { ...state.timer, setTime: null },
-          }));
-        }, 100);
       },
 
       setGameEndTime: (gameEndTime) => {

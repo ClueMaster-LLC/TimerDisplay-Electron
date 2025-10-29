@@ -91,12 +91,11 @@ contextBridge.exposeInMainWorld("GameBackend", {
   getCustomClueAlertAudio: () =>
     ipcRenderer.invoke("game:get-custom-clue-alert-audio"),
   introPostRequest: () => ipcRenderer.invoke("game:intro-post-request"),
-  calculateInitialTimer: () =>
-    ipcRenderer.invoke("game:calculate-initial-timer"),
   getClueMedia: (clueData) =>
     ipcRenderer.invoke("game:get-clue-media", clueData),
   postClueStatus: (gameId, clueId) =>
     ipcRenderer.invoke("game:post-clue-status", gameId, clueId),
+  getRoomInfo: () => ipcRenderer.invoke("game:get-room-info"),
 });
 
 contextBridge.exposeInMainWorld("WorkersBackend", {

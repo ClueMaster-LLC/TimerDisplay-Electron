@@ -44,7 +44,7 @@ async function run() {
             validateStatus: () => true,
           });
           if (request.status == 200) {
-            console.log("Worker: Files updated, reloading");
+            // console.log("Worker: Files updated, reloading");
             parentPort.postMessage({ type: "event", event: "syncRequest" });
           }
         }
@@ -55,11 +55,11 @@ async function run() {
       if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
         parentPort.postMessage({ type: "event", event: "connectionError" });
       } else {
-        console.log("Worker: Update room error - ", error);
+        // console.log("Worker: Update room error - ", error);
         parentPort.postMessage({ type: "event", event: "connectionRestored" });
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 }
 

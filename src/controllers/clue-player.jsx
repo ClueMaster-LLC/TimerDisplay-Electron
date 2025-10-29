@@ -11,10 +11,11 @@ export default function CluePlayer({ mainPlayerRef }) {
   const audioRef = useRef(null);
   const alertAudioRef = useRef(null);
 
-  const playTextClueAlert = async () => {
+  const playClueAlert = async () => {
     try {
       if (!roomConfig?.isTVClueAlert) {
         const defaultAlertSrc = "./assets/MessageAlert.mp3";
+        console.log("CluePlayer: Playing default clue alert:", defaultAlertSrc);
         if (alertAudioRef.current) {
           alertAudioRef.current.src = defaultAlertSrc;
           alertAudioRef.current.play();
@@ -24,6 +25,7 @@ export default function CluePlayer({ mainPlayerRef }) {
 
       const customAlertSrc = await window.GameBackend.getCustomClueAlertAudio();
       if (customAlertSrc) {
+        console.log("CluePlayer: Playing custom clue alert:", customAlertSrc);
         if (alertAudioRef.current) {
           alertAudioRef.current.src = customAlertSrc;
           alertAudioRef.current.play();
@@ -31,7 +33,7 @@ export default function CluePlayer({ mainPlayerRef }) {
       } else {
         const defaultAlertSrc = "./assets/MessageAlert.mp3";
         console.log(
-          "Custom alert not found, playing default:",
+          "CluePlayer: Custom alert not found, playing default:",
           defaultAlertSrc
         );
         if (alertAudioRef.current) {
@@ -40,7 +42,7 @@ export default function CluePlayer({ mainPlayerRef }) {
         }
       }
     } catch (error) {
-      console.error("Error playing text clue alert:", error);
+      console.error("CluePlayer: Error playing clue alert:", error);
       const defaultAlertSrc = "./assets/MessageAlert.mp3";
       if (alertAudioRef.current) {
         alertAudioRef.current.src = defaultAlertSrc;
@@ -51,21 +53,25 @@ export default function CluePlayer({ mainPlayerRef }) {
 
   const handleClueEnd = async () => {
     const { type, data } = clueState;
+    console.log("CluePlayer: handleClueEnd called", { type, data });
 
     // videos and audio should close themselves when done
     if (type === "video" || type === "audio") {
-      // Get gameId from gameInfo and clueId from data
       const gameId = data?.gameId || gameInfo?.gameId;
       const clueId = data?.clueId || data?.gameClueId;
 
       if (gameId && clueId) {
         try {
           await window.GameBackend.postClueStatus(gameId, clueId);
+          console.log("CluePlayer: Successfully posted clue status");
         } catch (error) {
-          console.error("Error notifying API about clue completion:", error);
+          console.error(
+            "CluePlayer: Error notifying API about clue completion:",
+            error
+          );
         }
       } else {
-        console.log("Missing gameId or clueId for API call", {
+        console.log("CluePlayer: Missing gameId or clueId for API call", {
           gameId,
           clueId,
         });
@@ -75,14 +81,19 @@ export default function CluePlayer({ mainPlayerRef }) {
   };
 
   useEffect(() => {
-    if (clueState.isActive && clueState.type === "text") {
-      playTextClueAlert();
+    if (
+      clueState.isActive &&
+      (clueState.type === "text" || clueState.type === "image")
+    ) {
+      console.log("CluePlayer: Text/Image clue shown, playing alert");
+      playClueAlert();
     }
   }, [clueState.isActive, clueState.type]);
 
   // unmute background music when clue ends
   useEffect(() => {
     if (!clueState.isActive) {
+      // Dispatch event to unmute background music
       window.dispatchEvent(new CustomEvent("unmuteBackgroundMusic"));
     }
   }, [clueState.isActive]);

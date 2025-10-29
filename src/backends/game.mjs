@@ -2,8 +2,8 @@ import { ipcMain } from "electron";
 import {
   gameIntroRequestAPI,
   postDeviceAPI,
-  getGameStartEndTimeAPI,
   postGameClueStatusAPI,
+  roomInfoAPI,
 } from "./apis.mjs";
 import store from "./state.mjs";
 import path from "path";
@@ -278,73 +278,6 @@ const postGameClueStatus = async (gameId, clueId) => {
   }
 };
 
-const getGameStartEndTime = async () => {
-  try {
-    const deviceUniqueID = store.get("uniqueCode");
-    const apiToken = store.get("APIToken");
-    const gameInfo = store.get("gameInfo");
-
-    if (!deviceUniqueID || !apiToken) {
-      console.error(
-        "Game: missing device id or api token for timer calculation"
-      );
-      return null;
-    }
-
-    const headers = { Authorization: `Basic ${deviceUniqueID}:${apiToken}` };
-    const endpoint = getGameStartEndTimeAPI.replace("{}", gameInfo.gameId);
-
-    console.log("Game: Fetching game start/end time from:", endpoint);
-    const response = await axios.get(endpoint, {
-      headers,
-      validateStatus: () => true,
-    });
-
-    if (response.status === 200 && response.data) {
-      console.log("Game: Game start/end time response:", response.data);
-      return response.data;
-    } else {
-      console.log(
-        "Game: Game start/end time request failed with status:",
-        response.status
-      );
-      return null;
-    }
-  } catch (error) {
-    console.error("Game: Error fetching game start/end time:", error);
-    return null;
-  }
-};
-
-const calculateInitialTimerValue = async () => {
-  try {
-    const gameTimeData = await getGameStartEndTime();
-
-    if (!gameTimeData) {
-      console.log("no game time data, using default 300");
-      return 300; // 5 minutes default
-    }
-
-    const now = new Date();
-    const gameEndTime = new Date(gameTimeData.gameEndDateTime + "Z");
-
-    const remainingTimeMs = gameEndTime.getTime() - now.getTime();
-    const remainingTimeSeconds = Math.floor(remainingTimeMs / 1000);
-
-    if (remainingTimeSeconds <= 0) {
-      return 0;
-    }
-
-    store.set("gameEndTime", gameTimeData.gameEndDateTime);
-    console.log("stored gameEndTime:", gameTimeData.gameEndDateTime);
-
-    return remainingTimeSeconds;
-  } catch (error) {
-    console.error("Error:", error);
-    return 300; // default fallback
-  }
-};
-
 const getBackgroundMusic = () => {
   try {
     const gameInfo = store.get("gameInfo");
@@ -393,16 +326,20 @@ const getCustomClueAlertAudio = () => {
     );
 
     if (!fs.existsSync(customClueMediaDirectory)) {
+      console.log("Game: Custom clue media directory does not exist");
       return null;
     }
 
     const files = fs.readdirSync(customClueMediaDirectory);
     if (files.length === 0) {
+      console.log("Game: No files found in custom clue media directory");
       return null;
     }
 
     const audioPath = path.join(customClueMediaDirectory, files[0]);
+    console.log("Game: Custom clue alert audio path:", audioPath);
     const relativePath = path.relative(BASE_MEDIA_DIRECTORY, audioPath);
+    console.log("Game: Custom clue alert audio relative path:", relativePath);
     return `media://local/${relativePath}`;
   } catch (error) {
     console.error("Game: Error getting custom clue alert audio:", error);
@@ -434,14 +371,45 @@ ipcMain.handle("game:intro-post-request", () => {
   return introPostRequest();
 });
 
-ipcMain.handle("game:calculate-initial-timer", () => {
-  return calculateInitialTimerValue();
-});
-
 ipcMain.handle("game:post-clue-status", (event, gameId, clueId) => {
   return postGameClueStatus(gameId, clueId);
 });
 
 ipcMain.handle("game:get-clue-media", (event, clueData) => {
   return getClueMedia(clueData);
+});
+
+const getRoomInfo = async () => {
+  try {
+    const deviceUniqueCode = store.get("uniqueCode");
+    const apiKey = store.get("APIToken");
+    const roomInfoAPIEndpoint = roomInfoAPI.replace(
+      "{device_unique_code}",
+      deviceUniqueCode
+    );
+    const apiEndpointHeader = {
+      Authorization: `Basic ${deviceUniqueCode}:${apiKey}`,
+    };
+
+    const response = await axios.get(roomInfoAPIEndpoint, {
+      headers: apiEndpointHeader,
+      validateStatus: () => true,
+    });
+
+    if (
+      response.status === 200 &&
+      response.data !== "No Configurations Files Found"
+    ) {
+      return response.data;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Game: Error getting room info:", error);
+    return null;
+  }
+};
+
+ipcMain.handle("game:get-room-info", () => {
+  return getRoomInfo();
 });

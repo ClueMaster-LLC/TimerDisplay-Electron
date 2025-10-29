@@ -398,7 +398,17 @@ app.whenReady().then(async () => {
   });
 
   try {
-    await import("../src/backends/state.mjs");
+    const stateModule = await import("../src/backends/state.mjs");
+    const store = stateModule.default;
+
+    const uniqueCode = store.get("uniqueCode");
+    const apiToken = store.get("APIToken");
+
+    store.clear();
+
+    if (uniqueCode) store.set("uniqueCode", uniqueCode);
+    if (apiToken) store.set("APIToken", apiToken);
+
     await import("../src/backends/splash.mjs");
     await import("../src/workers/workers.mjs");
 

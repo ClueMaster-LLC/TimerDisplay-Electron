@@ -53,7 +53,7 @@ async function run() {
         parentPort.postMessage({ type: "event", event: "connectionRestored" });
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 }
 

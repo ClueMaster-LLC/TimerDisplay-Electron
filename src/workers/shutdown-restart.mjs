@@ -43,7 +43,7 @@ async function run() {
             validateStatus: () => true,
           });
           if (request.status === 200) {
-            console.log("Worker: Restart request received");
+            // console.log("Worker: Restart request received");
             parentPort.postMessage({ type: "system", event: "restartRequest" });
           }
         } else if (requestID === 9) {
@@ -55,7 +55,7 @@ async function run() {
             validateStatus: () => true,
           });
           if (request.status === 200) {
-            console.log("Worker: Shutdown request received");
+            // console.log("Worker: Shutdown request received");
             parentPort.postMessage({
               type: "system",
               event: "shutdownRequest",
@@ -69,11 +69,11 @@ async function run() {
       if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
         parentPort.postMessage({ type: "event", event: "connectionError" });
       } else {
-        console.log("Worker: Update room error - ", error);
+        // console.log("Worker: Update room error - ", error);
         parentPort.postMessage({ type: "event", event: "connectionRestored" });
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 }
 
