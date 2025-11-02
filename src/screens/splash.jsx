@@ -32,7 +32,7 @@ export default function Splash() {
 
   return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-900 text-white">
-      <h1 className="text-4xl font-medium mb-8">ClueMaster Video Player</h1>
+      <h1 className="text-4xl font-medium mb-8">ClueMaster Timer Display</h1>
       <p className="text-xl mb-2">Version: {version}</p>
       <p className="text-xl mb-4">Local IP: {localIP}</p>
       <p className="text-xl text-gray-400">{status}</p>

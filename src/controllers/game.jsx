@@ -216,9 +216,11 @@ export default function Game({ gameInfo }) {
       ]);
 
       if (gameInfo?.isVideo) {
+        console.log("Main Game: Main visual content loaded:", mainVideo);
         setVideos((prev) => ({ ...prev, main: mainVideo }));
       }
       if (gameInfo?.isMusic) {
+        console.log("Main Game: Background music loaded:", music);
         setBackgroundMusic(music);
       }
 

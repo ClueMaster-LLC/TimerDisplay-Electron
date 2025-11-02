@@ -15,7 +15,11 @@ export default function CluePlayer({ mainPlayerRef }) {
     try {
       if (!roomConfig?.isTVClueAlert) {
         const defaultAlertSrc = "./assets/MessageAlert.mp3";
-        console.log("CluePlayer: Playing default clue alert:", defaultAlertSrc);
+        console.log(
+          "CluePlayer: Default clue alert audio path:",
+          defaultAlertSrc
+        );
+        console.log("CluePlayer: Playing default clue alert");
         if (alertAudioRef.current) {
           alertAudioRef.current.src = defaultAlertSrc;
           alertAudioRef.current.play();
@@ -25,15 +29,17 @@ export default function CluePlayer({ mainPlayerRef }) {
 
       const customAlertSrc = await window.GameBackend.getCustomClueAlertAudio();
       if (customAlertSrc) {
-        console.log("CluePlayer: Playing custom clue alert:", customAlertSrc);
+        console.log("CluePlayer: Custom clue alert audio src:", customAlertSrc);
+        console.log("CluePlayer: Playing custom clue alert");
         if (alertAudioRef.current) {
           alertAudioRef.current.src = customAlertSrc;
           alertAudioRef.current.play();
         }
       } else {
         const defaultAlertSrc = "./assets/MessageAlert.mp3";
+        console.log("CluePlayer: Custom alert not found, using default");
         console.log(
-          "CluePlayer: Custom alert not found, playing default:",
+          "CluePlayer: Default clue alert audio path:",
           defaultAlertSrc
         );
         if (alertAudioRef.current) {
@@ -93,7 +99,6 @@ export default function CluePlayer({ mainPlayerRef }) {
   // unmute background music when clue ends
   useEffect(() => {
     if (!clueState.isActive) {
-      // Dispatch event to unmute background music
       window.dispatchEvent(new CustomEvent("unmuteBackgroundMusic"));
     }
   }, [clueState.isActive]);
