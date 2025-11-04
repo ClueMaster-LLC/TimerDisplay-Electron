@@ -76,24 +76,6 @@ export default function Game({ gameInfo }) {
   }, []);
 
   useEffect(() => {
-    const handleWorkerEvent = (data) => {
-      if (
-        data.worker === "timerRequests" &&
-        data.component === "timer" &&
-        data.action === "update"
-      ) {
-        console.log(
-          "🔄 TIMER UPDATE: Worker triggered but no action needed (using real-time calculation)"
-        );
-      }
-    };
-
-    const workersEventHandler =
-      window.WorkersBackend.onWorkerEvent(handleWorkerEvent);
-    return () => workersEventHandler();
-  }, []);
-
-  useEffect(() => {
     if (!clue) {
       gameActions.hideClue();
       unmuteBackgroundMusic();

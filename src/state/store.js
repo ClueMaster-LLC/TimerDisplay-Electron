@@ -29,7 +29,6 @@ const useAppStore = create(
     actions: {
       // timer actions
       setTimerTime: (time) => {
-        console.log("📊 STORE: setTimerTime called with:", time);
         set((state) => ({
           timer: {
             ...state.timer,
