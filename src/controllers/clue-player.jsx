@@ -174,16 +174,18 @@ export default function CluePlayer({ mainPlayerRef }) {
           .replace(/\s+/g, " ")
           .trim();
         const fontSize = window.innerHeight / 35;
+        const containerHeight = window.innerHeight * 0.45; // 45vh in pixels
 
         return (
           <div
             className="absolute bottom-0 left-0 right-0 flex items-end justify-center"
-            style={{ height: "45vh" }}
+            style={{ height: `${containerHeight}px` }}
           >
             <div
               className="w-full flex items-center justify-center"
               style={{
                 width: "98.7%",
+                height: `${containerHeight}px`,
                 backgroundColor: "rgba(17, 17, 17, 0.7)",
                 padding: "1.3%",
               }}
