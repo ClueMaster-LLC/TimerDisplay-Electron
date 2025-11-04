@@ -169,6 +169,10 @@ export default function CluePlayer({ mainPlayerRef }) {
         );
 
       case "text":
+        const cleanedText = clueState.src
+          .replace(/[\n\r\t]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
         return (
           <div
             className="absolute bottom-0 left-0 right-0 overflow-hidden"
@@ -178,7 +182,7 @@ export default function CluePlayer({ mainPlayerRef }) {
               <div className="max-w-4xl w-full p-8 overflow-hidden">
                 <div className="text-center overflow-hidden">
                   <p className="text-2xl text-white leading-relaxed wrap-break-word">
-                    {clueState.src}
+                    {cleanedText}
                   </p>
                 </div>
               </div>
