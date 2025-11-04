@@ -171,13 +171,13 @@ export default function CluePlayer({ mainPlayerRef }) {
       case "text":
         return (
           <div
-            className="absolute bottom-0 left-0 right-0"
+            className="absolute bottom-0 left-0 right-0 overflow-hidden"
             style={{ height: "45vh" }}
           >
             <div className="h-full bg-black/50 backdrop-blur-sm flex items-center justify-center px-8">
-              <div className="max-w-4xl w-full p-8">
-                <div className="text-center">
-                  <p className="text-2xl text-white leading-relaxed">
+              <div className="max-w-4xl w-full p-8 overflow-hidden">
+                <div className="text-center overflow-hidden">
+                  <p className="text-2xl text-white leading-relaxed wrap-break-word">
                     {clueState.src}
                   </p>
                 </div>
