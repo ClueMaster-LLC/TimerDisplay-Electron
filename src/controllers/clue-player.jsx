@@ -177,7 +177,7 @@ export default function CluePlayer({ mainPlayerRef }) {
             <div className="h-full bg-black/50 backdrop-blur-sm flex items-center justify-center px-8">
               <div className="max-w-4xl w-full p-8">
                 <div className="text-center">
-                  <p className="text-2xl text-white leading-relaxed whitespace-pre-wrap">
+                  <p className="text-2xl text-white leading-relaxed">
                     {clueState.src}
                   </p>
                 </div>
