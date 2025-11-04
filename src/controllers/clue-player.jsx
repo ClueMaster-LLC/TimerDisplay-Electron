@@ -173,7 +173,7 @@ export default function CluePlayer({ mainPlayerRef }) {
           .replace(/[\n\r\t]+/g, " ")
           .replace(/\s+/g, " ")
           .trim();
-        const fontSize = window.innerHeight / 35;
+        const fontSize = window.innerHeight / 30;
         const containerHeight = window.innerHeight * 0.45; // 45vh in pixels
 
         return (
