@@ -173,19 +173,32 @@ export default function CluePlayer({ mainPlayerRef }) {
           .replace(/[\n\r\t]+/g, " ")
           .replace(/\s+/g, " ")
           .trim();
+        const fontSize = window.innerHeight / 35;
+
         return (
           <div
-            className="absolute bottom-0 left-0 right-0 overflow-hidden"
+            className="absolute bottom-0 left-0 right-0 flex items-end justify-center"
             style={{ height: "45vh" }}
           >
-            <div className="h-full bg-black/50 backdrop-blur-sm flex items-center justify-center px-8">
-              <div className="max-w-4xl w-full p-8 overflow-hidden">
-                <div className="text-center overflow-hidden">
-                  <p className="text-2xl text-white leading-relaxed wrap-break-word">
-                    {cleanedText}
-                  </p>
-                </div>
-              </div>
+            <div
+              className="w-full flex items-center justify-center"
+              style={{
+                width: "98.7%",
+                backgroundColor: "rgba(17, 17, 17, 0.7)",
+                padding: "1.3%",
+              }}
+            >
+              <p
+                className="text-white font-bold text-center leading-relaxed"
+                style={{
+                  fontSize: `${fontSize}px`,
+                  wordWrap: "break-word",
+                  overflowWrap: "break-word",
+                  whiteSpace: "normal",
+                }}
+              >
+                {cleanedText}
+              </p>
             </div>
           </div>
         );
