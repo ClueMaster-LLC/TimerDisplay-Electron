@@ -49,8 +49,19 @@ export default function Loading() {
 
   return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#191F26] text-white">
-      <img src="./assets/loading_beaker.gif" className="w-64 h-56 m-4" />
-      <p className="text-xl mb-6">{status}</p>
+      <img
+        src="./assets/loading_beaker.gif"
+        className="m-4"
+        style={{
+          width: 'auto',      // scale with Electron window width
+          maxWidth: 800,      // never bigger than the original 800px
+          height: '80vh',     // keep aspect ratio
+          maxHeight: 600      // never taller than 600px
+        }}
+      />
+      <p className="text-xl mb-6 text-center px-4 break-words">
+        {status}
+      </p>
       {progressMax > 0 && (
         <div className="w-1/3">
           <div className="h-3 rounded border-2 border-[#4e71cf]">
