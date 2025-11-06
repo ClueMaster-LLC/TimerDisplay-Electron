@@ -427,7 +427,7 @@ export default function Game({ gameInfo }) {
     if (apiType === "image" || apiType === "photo") return "image";
 
     const filename = clueData.clueFilename?.toLowerCase() || "";
-    if (filename.match(/\.(mp4|webm|avi|mov|mkv)$/)) return "video";
+    if (filename.match(/\.(mp4|webm|avi|mov|mkv|m4v)$/)) return "video";
     if (filename.match(/\.(mp3|wav|aac|m4a|ogg)$/)) return "audio";
     if (filename.match(/\.gif$/)) return "gif";
     if (filename.match(/\.(jpg|jpeg|png|bmp|svg|webp)$/)) return "image";
