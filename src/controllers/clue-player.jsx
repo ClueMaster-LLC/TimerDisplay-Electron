@@ -50,6 +50,10 @@ export default function CluePlayer({ mainPlayerRef }) {
     } catch (error) {
       console.error("CluePlayer: Error playing clue alert:", error);
       const defaultAlertSrc = "./assets/MessageAlert.mp3";
+      console.log(
+        "CluePlayer: Default clue alert audio path (fallback):",
+        defaultAlertSrc
+      );
       if (alertAudioRef.current) {
         alertAudioRef.current.src = defaultAlertSrc;
         alertAudioRef.current.play();
@@ -96,12 +100,19 @@ export default function CluePlayer({ mainPlayerRef }) {
     }
   }, [clueState.isActive, clueState.type]);
 
-  // unmute background music when clue ends
+  // unmute background music when clue ends or when switching to text/image clues
   useEffect(() => {
     if (!clueState.isActive) {
       window.dispatchEvent(new CustomEvent("unmuteBackgroundMusic"));
+    } else if (
+      clueState.isActive &&
+      (clueState.type === "text" ||
+        clueState.type === "image" ||
+        clueState.type === "gif")
+    ) {
+      window.dispatchEvent(new CustomEvent("unmuteBackgroundMusic"));
     }
-  }, [clueState.isActive]);
+  }, [clueState.isActive, clueState.type]);
 
   // mute the background video when showing visual clues
   useEffect(() => {

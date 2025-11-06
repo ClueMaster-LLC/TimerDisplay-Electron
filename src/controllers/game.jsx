@@ -29,6 +29,7 @@ export default function Game({ gameInfo }) {
 
   const mainPlayerRef = useRef(null);
   const musicRef = useRef(null);
+  const currentClueRef = useRef(null);
 
   useEffect(() => {
     const handleGameCommand = (event) => {
@@ -76,18 +77,65 @@ export default function Game({ gameInfo }) {
   }, []);
 
   useEffect(() => {
-    if (!clue) {
-      gameActions.hideClue();
-      unmuteBackgroundMusic();
-      return;
-    }
+    const handleClueChange = async () => {
+      if (!clue) {
+        gameActions.hideClue();
+        unmuteBackgroundMusic();
+        currentClueRef.current = null;
+        return;
+      }
 
-    if (clue.clueStatus) {
-      displayClue(clue);
-    } else {
-      gameActions.hideClue();
-      unmuteBackgroundMusic();
-    }
+      if (clue.clueStatus) {
+        const previousClue = currentClueRef.current;
+        const newClueId = clue.gameClueId || clue.clueId;
+        const prevClueId = previousClue?.gameClueId || previousClue?.clueId;
+
+        if (previousClue && prevClueId && prevClueId !== newClueId) {
+          console.log("Game: New clue interrupting previous clue", {
+            previousClueId: prevClueId,
+            newClueId,
+          });
+
+          const prevClueType = determineClueType(previousClue);
+          if (prevClueType === "video" || prevClueType === "audio") {
+            try {
+              const gameId = previousClue.gameId || gameInfo?.gameId;
+              if (gameId && prevClueId) {
+                console.log(
+                  "Game: Setting clueStatus to false for interrupted clue",
+                  { gameId, prevClueId }
+                );
+                await window.GameBackend.postClueStatus(gameId, prevClueId);
+              }
+            } catch (error) {
+              console.error(
+                "Game: Error posting clueStatus for interrupted clue:",
+                error
+              );
+            }
+          }
+
+          // hide the old clue first
+          gameActions.hideClue();
+          unmuteBackgroundMusic();
+
+          // small delay to ensure clean transition
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        // ppdate the current clue reference
+        currentClueRef.current = clue;
+
+        // display the new clue
+        displayClue(clue);
+      } else {
+        gameActions.hideClue();
+        unmuteBackgroundMusic();
+        currentClueRef.current = null;
+      }
+    };
+
+    handleClueChange();
   }, [clue]);
 
   // game command handlers
@@ -119,6 +167,7 @@ export default function Game({ gameInfo }) {
     gameActions.pauseTimer();
     pauseMainVideo();
     stopBackgroundMusic();
+    currentClueRef.current = null;
 
     try {
       window.WorkersBackend.stop(["clue", "timerRequests"]);
@@ -150,6 +199,7 @@ export default function Game({ gameInfo }) {
     gameActions.pauseTimer();
     pauseMainVideo();
     stopBackgroundMusic();
+    currentClueRef.current = null;
 
     setVideos({ intro: null, main: null, end: null });
     setOverlayVideo({ isVisible: false, src: null, type: null });
@@ -207,7 +257,9 @@ export default function Game({ gameInfo }) {
       }
 
       await window.WorkersBackend.start(["clue", "timerRequests"]);
-    } catch (error) {}
+    } catch (error) {
+      console.error("GAME: Error starting main game:", error);
+    }
 
     await initializeTimer();
     setTimerInitialized(true);
@@ -307,7 +359,7 @@ export default function Game({ gameInfo }) {
       } else {
       }
     } catch (error) {
-      console.error("Timer init: Error:", error);
+      console.error("TIMER init: Error:", error);
     }
   };
 
@@ -359,7 +411,9 @@ export default function Game({ gameInfo }) {
       const clueType = determineClueType(clueData);
       gameActions.showClue(clueType, mediaSrc, clueData);
 
-      muteBackgroundMusic();
+      if (clueType === "video" || clueType === "audio") {
+        muteBackgroundMusic();
+      }
     } catch (error) {
       console.error("Game: Error displaying clue:", error);
     }
