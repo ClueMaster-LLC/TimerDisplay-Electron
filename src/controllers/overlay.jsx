@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useTimerState, useOverlayState, useGameActions } from "../state/store";
+import {
+  useTimerState,
+  useCountUpTimerState,
+  useOverlayState,
+  useGameActions,
+} from "../state/store";
 
 const ClueIcon = ({ size, isUsed = false }) => (
   <div
@@ -30,25 +35,52 @@ const ClueIconGrid = ({
 }) => {
   if (totalClues === 0) return null;
 
-  const getIconSize = () => {
-    const screenWidth = window.innerWidth;
-    const screenHeight = window.innerHeight;
-    const minDimension = Math.min(screenWidth, screenHeight);
+  const [viewport, setViewport] = useState(() => {
+    if (typeof window === "undefined") {
+      return { width: 0, height: 0 };
+    }
+    return { width: window.innerWidth, height: window.innerHeight };
+  });
 
-    const sizeMultipliers = {
-      0: 0.08,
-      1: 0.1,
-      2: 0.12,
-      3: 0.15,
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleResize = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
     };
 
-    const multiplier = sizeMultipliers[clueSize] || sizeMultipliers[1];
-    let baseSize = Math.max(40, minDimension * multiplier);
+    window.addEventListener("resize", handleResize);
+    handleResize();
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  const getIconSize = () => {
+    const width = viewport.width || 0;
+    const fallbackWidth = 900;
+    const effectiveWidth = width > 0 ? width : fallbackWidth;
+
+    const denominators = {
+      0: 16,
+      1: 14,
+      2: 12,
+      3: 10,
+    };
+
+    const denominator = denominators.hasOwnProperty(clueSize)
+      ? denominators[clueSize]
+      : denominators[1];
+
+    let baseSize = effectiveWidth / denominator;
 
     if (totalClues > 8) baseSize *= 0.85;
     else if (totalClues > 6) baseSize *= 0.9;
 
-    return Math.min(baseSize, 150); // Cap at 150px
+    return Math.min(baseSize, 150);
   };
 
   const iconSize = getIconSize();
@@ -77,42 +109,91 @@ const ClueIconGrid = ({
   };
 
   return (
-    <div className={getPositionClasses()} style={{ gap: `${gap}px` }}>
+    <div
+      className={getPositionClasses()}
+      style={{
+        gap: `${gap}px`,
+      }}
+    >
       {clueIcons}
     </div>
   );
 };
 
-const CountdownTimer = ({ onTimeEnd, onTimeUpdate, gameInfo }) => {
-  const timerState = useTimerState();
+const GameTimerDisplay = ({ onTimeEnd, gameInfo, roomInfo }) => {
+  const countdownTimer = useTimerState();
+  const countUpTimer = useCountUpTimerState();
   const gameActions = useGameActions();
-  const intervalRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
+  const countUpIntervalRef = useRef(null);
+  const countUpBaseRef = useRef(0);
+  const countUpStartRef = useRef(null);
+  const lastGameIdRef = useRef(null);
+  const [viewport, setViewport] = useState(() => {
+    if (typeof window === "undefined") {
+      return { width: 0, height: 0 };
+    }
+    return { width: window.innerWidth, height: window.innerHeight };
+  });
+  const currentGameId = gameInfo?.gameId ?? null;
+  const isTimeLimit = roomInfo?.IsTimeLimit ?? gameInfo?.isTimeLimit ?? true;
+  const isPaused = countdownTimer.paused;
 
-  // watch for changes in gameInfo.gameEndDateTime and update timer store
   useEffect(() => {
-    if (gameInfo?.gameEndDateTime) {
+    if (isTimeLimit && gameInfo?.gameEndDateTime) {
       gameActions.setGameEndTime(gameInfo.gameEndDateTime);
     } else {
-      console.log("Overlay: No gameEndDateTime in gameInfo");
+      gameActions.setGameEndTime(null);
     }
-  }, [gameInfo?.gameEndDateTime]);
+  }, [isTimeLimit, gameInfo?.gameEndDateTime, gameActions]);
 
-  // calculate time based on UTC gameEndTime
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleResize = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    };
+
+    window.addEventListener("resize", handleResize);
+    handleResize();
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (lastGameIdRef.current !== currentGameId) {
+      lastGameIdRef.current = currentGameId;
+      countUpBaseRef.current = 0;
+      countUpStartRef.current = null;
+      gameActions.resetCountUpTimer();
+
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      if (countUpIntervalRef.current) {
+        clearInterval(countUpIntervalRef.current);
+        countUpIntervalRef.current = null;
+      }
+    }
+  }, [currentGameId, isTimeLimit, gameActions]);
+
   const calculateTimeLeft = () => {
-    if (!timerState.gameEndTime) {
+    if (!countdownTimer.gameEndTime) {
       return 0;
     }
 
-    // get current time in UTC
     const nowUTC = new Date();
 
-    // parse gameEndTime - append 'Z' if not present to ensure UTC parsing
-    const gameEndTimeStr = timerState.gameEndTime.endsWith("Z")
-      ? timerState.gameEndTime
-      : timerState.gameEndTime + "Z";
+    const gameEndTimeStr = countdownTimer.gameEndTime.endsWith("Z")
+      ? countdownTimer.gameEndTime
+      : countdownTimer.gameEndTime + "Z";
     const gameEndTimeUTC = new Date(gameEndTimeStr);
 
-    // calculate remaining time in seconds
     const remainingTimeMs = gameEndTimeUTC.getTime() - nowUTC.getTime();
     const remainingTimeSeconds = Math.max(
       0,
@@ -122,17 +203,23 @@ const CountdownTimer = ({ onTimeEnd, onTimeUpdate, gameInfo }) => {
     return remainingTimeSeconds;
   };
 
-  // update timer every second
   useEffect(() => {
-    if (timerState.paused || !timerState.gameEndTime) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+    if (!isTimeLimit) {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
       }
       return;
     }
 
-    // calculate and update immediately
+    if (isPaused || !countdownTimer.gameEndTime) {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      return;
+    }
+
     const timeLeft = calculateTimeLeft();
     gameActions.setTimerTime(timeLeft);
 
@@ -141,45 +228,117 @@ const CountdownTimer = ({ onTimeEnd, onTimeUpdate, gameInfo }) => {
       return;
     }
 
-    // start interval to update every second
-    intervalRef.current = setInterval(() => {
+    countdownIntervalRef.current = setInterval(() => {
       const newTimeLeft = calculateTimeLeft();
       gameActions.setTimerTime(newTimeLeft);
 
       if (newTimeLeft <= 0) {
         onTimeEnd?.();
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
         }
       }
     }, 1000);
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
       }
     };
-  }, [timerState.paused, timerState.gameEndTime, onTimeEnd]);
+  }, [
+    isPaused,
+    countdownTimer.gameEndTime,
+    onTimeEnd,
+    isTimeLimit,
+    currentGameId,
+    gameActions,
+  ]);
+
+  useEffect(() => {
+    if (isTimeLimit) {
+      countUpBaseRef.current = 0;
+      countUpStartRef.current = null;
+      if (countUpIntervalRef.current) {
+        clearInterval(countUpIntervalRef.current);
+        countUpIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const stopInterval = () => {
+      if (countUpIntervalRef.current) {
+        clearInterval(countUpIntervalRef.current);
+        countUpIntervalRef.current = null;
+      }
+    };
+
+    const finalizeElapsed = (updateStore) => {
+      if (!countUpStartRef.current) return;
+      const elapsed = Math.floor((Date.now() - countUpStartRef.current) / 1000);
+      if (elapsed > 0) {
+        countUpBaseRef.current += elapsed;
+        if (updateStore) {
+          gameActions.setCountUpTime(countUpBaseRef.current);
+        }
+      } else if (updateStore) {
+        gameActions.setCountUpTime(countUpBaseRef.current);
+      }
+      countUpStartRef.current = null;
+    };
+
+    if (isPaused) {
+      finalizeElapsed(true);
+      stopInterval();
+      return;
+    }
+
+    if (!countUpStartRef.current) {
+      countUpStartRef.current = Date.now();
+    }
+
+    const updateElapsed = () => {
+      const elapsed = Math.floor((Date.now() - countUpStartRef.current) / 1000);
+      const total = countUpBaseRef.current + elapsed;
+      gameActions.setCountUpTime(total);
+    };
+
+    updateElapsed();
+    countUpIntervalRef.current = setInterval(updateElapsed, 1000);
+
+    return () => {
+      stopInterval();
+      finalizeElapsed(false);
+    };
+  }, [isTimeLimit, isPaused, gameActions, currentGameId]);
 
   const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs
-      .toString()
-      .padStart(2, "0")}`;
+
+    return [hours, mins, secs]
+      .map((unit) => unit.toString().padStart(2, "0"))
+      .join(":");
   };
 
-  const getTimerColor = () => {
-    return "text-white";
+  const getTimerStyle = () => {
+    const minDimension = Math.min(viewport.width, viewport.height);
+    const baseFontSize = Math.max(48, Math.round(minDimension * 0.18));
+
+    return {
+      fontSize: `${baseFontSize}px`,
+      lineHeight: 1,
+    };
   };
 
   return (
     <div
-      className={`text-9xl font-mono font-bold ${getTimerColor()} transition-colors duration-300`}
+      className="font-mono font-bold text-white transition-colors duration-300"
+      style={getTimerStyle()}
     >
-      {formatTime(timerState.time)}
+      {formatTime(isTimeLimit ? countdownTimer.time : countUpTimer.time)}
     </div>
   );
 };
@@ -195,26 +354,32 @@ export default function Overlay({ gameInfo, onTimerEnd }) {
         if (info) {
           setRoomInfo(info);
         }
-      } catch (error) {
-        console.error("Overlay: Error fetching room info:", error);
-      }
+      } catch (error) {}
     };
 
     fetchRoomInfo();
   }, []);
 
   if (!overlayState.visible) return null;
-  const maxClues = roomInfo?.MaxNoOfClues || gameInfo?.noOfClues || 0;
+
+  const cluesAllowed = roomInfo?.CluesAllowed === true;
+  const maxClues = cluesAllowed
+    ? roomInfo?.MaxNoOfClues || gameInfo?.noOfClues || 0
+    : 0;
   const clueSize = roomInfo?.ClueSizeOnScreen ?? 2;
   const cluePosition = roomInfo?.CluePositionVertical || "Left";
 
   return (
     <div className="absolute inset-0 pointer-events-none z-20">
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30">
-        <CountdownTimer onTimeEnd={onTimerEnd} gameInfo={gameInfo} />
+        <GameTimerDisplay
+          onTimeEnd={onTimerEnd}
+          gameInfo={gameInfo}
+          roomInfo={roomInfo}
+        />
       </div>
 
-      {gameInfo && maxClues > 0 && (
+      {gameInfo && cluesAllowed && maxClues > 0 && (
         <ClueIconGrid
           totalClues={maxClues}
           usedClues={gameInfo.noOfCluesUsed || 0}

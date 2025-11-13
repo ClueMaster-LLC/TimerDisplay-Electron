@@ -29,7 +29,7 @@ export default function Game({ gameInfo }) {
 
   const mainPlayerRef = useRef(null);
   const musicRef = useRef(null);
-  const currentClueRef = useRef(null);
+  const currentClueRef = useRef(null); // Track the currently active clue
 
   useEffect(() => {
     const handleGameCommand = (event) => {
@@ -86,47 +86,30 @@ export default function Game({ gameInfo }) {
       }
 
       if (clue.clueStatus) {
+        // Check if there's a different clue currently playing
         const previousClue = currentClueRef.current;
         const newClueId = clue.gameClueId || clue.clueId;
         const prevClueId = previousClue?.gameClueId || previousClue?.clueId;
 
         if (previousClue && prevClueId && prevClueId !== newClueId) {
-          console.log("Game: New clue interrupting previous clue", {
-            previousClueId: prevClueId,
-            newClueId,
-          });
-
           const prevClueType = determineClueType(previousClue);
           if (prevClueType === "video" || prevClueType === "audio") {
             try {
               const gameId = previousClue.gameId || gameInfo?.gameId;
               if (gameId && prevClueId) {
-                console.log(
-                  "Game: Setting clueStatus to false for interrupted clue",
-                  { gameId, prevClueId }
-                );
                 await window.GameBackend.postClueStatus(gameId, prevClueId);
               }
-            } catch (error) {
-              console.error(
-                "Game: Error posting clueStatus for interrupted clue:",
-                error
-              );
-            }
+            } catch (error) {}
           }
 
-          // hide the old clue first
           gameActions.hideClue();
           unmuteBackgroundMusic();
 
-          // small delay to ensure clean transition
           await new Promise((resolve) => setTimeout(resolve, 50));
         }
 
-        // ppdate the current clue reference
         currentClueRef.current = clue;
 
-        // display the new clue
         displayClue(clue);
       } else {
         gameActions.hideClue();
@@ -138,7 +121,6 @@ export default function Game({ gameInfo }) {
     handleClueChange();
   }, [clue]);
 
-  // game command handlers
   const handleStartGame = async (data) => {
     setIsGameActive(true);
 
@@ -171,9 +153,7 @@ export default function Game({ gameInfo }) {
 
     try {
       window.WorkersBackend.stop(["clue", "timerRequests"]);
-    } catch (error) {
-      console.error("Game: Error stopping workers:", error);
-    }
+    } catch (error) {}
   };
 
   const handlePlayEndVideo = async (data) => {
@@ -189,9 +169,7 @@ export default function Game({ gameInfo }) {
           type: data.isWin ? "end-win" : "end-loss",
         });
       }
-    } catch (error) {
-      console.error("Game: Error loading end video:", error);
-    }
+    } catch (error) {}
   };
 
   const handleResetGame = () => {
@@ -209,9 +187,7 @@ export default function Game({ gameInfo }) {
 
     try {
       window.WorkersBackend.stop(["clue", "timerRequests"]);
-    } catch (error) {
-      console.error("Game: Error stopping workers:", error);
-    }
+    } catch (error) {}
   };
 
   const handlePauseGame = async () => {
@@ -235,7 +211,6 @@ export default function Game({ gameInfo }) {
         await startMainGame();
       }
     } catch (error) {
-      console.error("Game: Error loading intro video:", error);
       await startMainGame();
     }
   };
@@ -248,18 +223,22 @@ export default function Game({ gameInfo }) {
       ]);
 
       if (gameInfo?.isVideo) {
-        console.log("Main Game: Main visual content loaded:", mainVideo);
         setVideos((prev) => ({ ...prev, main: mainVideo }));
       }
       if (gameInfo?.isMusic) {
-        console.log("Main Game: Background music loaded:", music);
         setBackgroundMusic(music);
       }
 
-      await window.WorkersBackend.start(["clue", "timerRequests"]);
-    } catch (error) {
-      console.error("GAME: Error starting main game:", error);
-    }
+      const roomInfo = await window.GameBackend.getRoomInfo();
+      const cluesAllowed = roomInfo?.CluesAllowed === true;
+
+      const workersToStart = ["timerRequests"];
+      if (cluesAllowed) {
+        workersToStart.push("clue");
+      }
+
+      await window.WorkersBackend.start(workersToStart);
+    } catch (error) {}
 
     await initializeTimer();
     setTimerInitialized(true);
@@ -272,6 +251,7 @@ export default function Game({ gameInfo }) {
       resumeMainVideo();
     }
 
+    // Play or resume background music
     if (gameInfo?.isMusic) {
       if (isPaused) {
         resumeBackgroundMusic();
@@ -296,9 +276,9 @@ export default function Game({ gameInfo }) {
     if (type === "intro") {
       try {
         await window.GameBackend.introPostRequest();
+
         await startMainGame();
       } catch (error) {
-        console.error("Game: Error sending intro post request:", error);
         await startMainGame();
       }
     } else if (type === "end-win" || type === "end-loss") {
@@ -311,9 +291,7 @@ export default function Game({ gameInfo }) {
       return;
     }
     if (musicRef.current) {
-      musicRef.current.play().catch((error) => {
-        console.error("Game: Error playing background music:", error);
-      });
+      musicRef.current.play().catch((error) => {});
     }
   };
 
@@ -332,9 +310,7 @@ export default function Game({ gameInfo }) {
 
   const resumeBackgroundMusic = () => {
     if (musicRef.current) {
-      musicRef.current.play().catch((error) => {
-        console.error("Game: Error resuming background music:", error);
-      });
+      musicRef.current.play().catch((error) => {});
     }
   };
 
@@ -354,13 +330,11 @@ export default function Game({ gameInfo }) {
     try {
       const freshGameInfo = await window.StoreBackend.get("gameInfo");
       const gameEndDateTime = freshGameInfo?.gameEndDateTime;
+
       if (gameEndDateTime) {
         gameActions.setGameEndTime(gameEndDateTime);
-      } else {
       }
-    } catch (error) {
-      console.error("TIMER init: Error:", error);
-    }
+    } catch (error) {}
   };
 
   const pauseMainVideo = () => {
@@ -369,9 +343,7 @@ export default function Game({ gameInfo }) {
 
   const resumeMainVideo = () => {
     const promise = mainPlayerRef.current?.play();
-    promise?.catch((error) => {
-      console.error("Game: Error resuming video:", error);
-    });
+    promise?.catch((error) => {});
   };
 
   const handleTimerEnd = async () => {
@@ -379,7 +351,6 @@ export default function Game({ gameInfo }) {
     pauseMainVideo();
     stopBackgroundMusic();
 
-    // simulate status 5 (game ended) by dispatching the end video command
     window.dispatchEvent(
       new CustomEvent("gameCommand", {
         detail: {
@@ -391,9 +362,7 @@ export default function Game({ gameInfo }) {
 
     try {
       await window.GameBackend.timerEndRequest?.();
-    } catch (error) {
-      console.error("Game: Error sending timer end request:", error);
-    }
+    } catch (error) {}
   };
 
   const displayClue = async (clueData) => {
@@ -414,9 +383,7 @@ export default function Game({ gameInfo }) {
       if (clueType === "video" || clueType === "audio") {
         muteBackgroundMusic();
       }
-    } catch (error) {
-      console.error("Game: Error displaying clue:", error);
-    }
+    } catch (error) {}
   };
 
   const determineClueType = (clueData) => {

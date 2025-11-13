@@ -13,6 +13,11 @@ const useAppStore = create(
       gameEndTime: null, // store the game end time (UTC) for real-time calculation
     },
 
+    countUpTimer: {
+      time: 0,
+      paused: false,
+    },
+
     overlay: {
       visible: false,
       position: "vertical-left",
@@ -27,12 +32,30 @@ const useAppStore = create(
     },
 
     actions: {
-      // timer actions
       setTimerTime: (time) => {
         set((state) => ({
           timer: {
             ...state.timer,
             time,
+          },
+        }));
+      },
+
+      setCountUpTime: (time) => {
+        set((state) => ({
+          countUpTimer: {
+            ...state.countUpTimer,
+            time,
+          },
+        }));
+      },
+
+      resetCountUpTimer: () => {
+        set((state) => ({
+          countUpTimer: {
+            ...state.countUpTimer,
+            time: 0,
+            paused: false,
           },
         }));
       },
@@ -49,12 +72,14 @@ const useAppStore = create(
       pauseTimer: () => {
         set((state) => ({
           timer: { ...state.timer, paused: true },
+          countUpTimer: { ...state.countUpTimer, paused: true },
         }));
       },
 
       resumeTimer: () => {
         set((state) => ({
           timer: { ...state.timer, paused: false },
+          countUpTimer: { ...state.countUpTimer, paused: false },
         }));
       },
 
@@ -101,7 +126,6 @@ const useAppStore = create(
       },
     },
 
-    // store sync methods (internal)
     _updateStore: (key, value) => {
       set((state) => ({
         data: { ...state.data, [key]: value },
@@ -120,7 +144,6 @@ const useAppStore = create(
   }))
 );
 
-// store sync system
 let isInitialized = false;
 let unsubscribeFromChanges = null;
 
@@ -136,9 +159,7 @@ export const initializeStoreSync = async () => {
     });
 
     isInitialized = true;
-  } catch (error) {
-    console.error("Failed to initialize store sync:", error);
-  }
+  } catch (error) {}
 };
 
 export const cleanupStoreSync = () => {
@@ -162,6 +183,10 @@ export const useGameActions = () => {
 
 export const useTimerState = () => {
   return useAppStore((state) => state.timer);
+};
+
+export const useCountUpTimerState = () => {
+  return useAppStore((state) => state.countUpTimer);
 };
 
 export const useOverlayState = () => {
