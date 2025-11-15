@@ -13,7 +13,7 @@ const ClueIcon = ({ size, isUsed = false }) => (
       transition-all duration-300 font-bold backdrop-blur-sm
       ${
         isUsed
-          ? "bg-transparent border-white/10 text-white/10"
+          ? "bg-gray-300/30 border-gray-400/30 text-gray-500"
           : "bg-slate-800/40 border-slate-600/40 text-white"
       }
     `}
@@ -85,33 +85,71 @@ const ClueIconGrid = ({
 
   const iconSize = getIconSize();
   const gap = Math.max(8, iconSize / 5);
+  const padding = Math.max(16, iconSize * 0.3);
 
   const clueIcons = Array.from({ length: totalClues }, (_, index) => (
     <ClueIcon key={index} size={iconSize} isUsed={index < usedClues} />
   ));
 
-  const getPositionClasses = () => {
+  const getPositionStyle = () => {
     const positions = {
-      Left: "absolute left-4 top-1/2 transform -translate-y-1/2 flex-col",
-      Right: "absolute right-4 top-1/2 transform -translate-y-1/2 flex-col",
-      Top: "absolute top-4 left-1/2 transform -translate-x-1/2 flex-row",
-      Bottom: "absolute bottom-4 left-1/2 transform -translate-x-1/2 flex-row",
-      "vertical-left":
-        "absolute left-4 top-1/2 transform -translate-y-1/2 flex-col",
-      "vertical-right":
-        "absolute right-4 top-1/2 transform -translate-y-1/2 flex-col",
-      "horizontal-top":
-        "absolute top-4 left-1/2 transform -translate-x-1/2 flex-row",
-      "horizontal-bottom":
-        "absolute bottom-4 left-1/2 transform -translate-x-1/2 flex-row",
+      Left: {
+        left: `${padding}px`,
+        top: "50%",
+        transform: "translateY(-50%)",
+        flexDirection: "column",
+      },
+      Right: {
+        right: `${padding}px`,
+        top: "50%",
+        transform: "translateY(-50%)",
+        flexDirection: "column",
+      },
+      Top: {
+        top: `${padding}px`,
+        left: "50%",
+        transform: "translateX(-50%)",
+        flexDirection: "row",
+      },
+      Bottom: {
+        bottom: `${padding}px`,
+        left: "50%",
+        transform: "translateX(-50%)",
+        flexDirection: "row",
+      },
+      "vertical-left": {
+        left: `${padding}px`,
+        top: "50%",
+        transform: "translateY(-50%)",
+        flexDirection: "column",
+      },
+      "vertical-right": {
+        right: `${padding}px`,
+        top: "50%",
+        transform: "translateY(-50%)",
+        flexDirection: "column",
+      },
+      "horizontal-top": {
+        top: `${padding}px`,
+        left: "50%",
+        transform: "translateX(-50%)",
+        flexDirection: "row",
+      },
+      "horizontal-bottom": {
+        bottom: `${padding}px`,
+        left: "50%",
+        transform: "translateX(-50%)",
+        flexDirection: "row",
+      },
     };
-    return `${positions[position] || positions["Left"]} flex`;
+    return positions[position] || positions["Left"];
   };
 
   return (
     <div
-      className={getPositionClasses()}
+      className="absolute flex"
       style={{
+        ...getPositionStyle(),
         gap: `${gap}px`,
       }}
     >

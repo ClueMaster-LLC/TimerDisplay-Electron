@@ -228,16 +228,7 @@ export default function Game({ gameInfo }) {
       if (gameInfo?.isMusic) {
         setBackgroundMusic(music);
       }
-
-      const roomInfo = await window.GameBackend.getRoomInfo();
-      const cluesAllowed = roomInfo?.CluesAllowed === true;
-
-      const workersToStart = ["timerRequests"];
-      if (cluesAllowed) {
-        workersToStart.push("clue");
-      }
-
-      await window.WorkersBackend.start(workersToStart);
+      await window.WorkersBackend.start(["clue", "timerRequests"]);
     } catch (error) {}
 
     await initializeTimer();
