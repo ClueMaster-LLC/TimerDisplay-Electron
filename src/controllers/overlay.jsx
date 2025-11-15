@@ -13,7 +13,7 @@ const ClueIcon = ({ size, isUsed = false }) => (
       transition-all duration-300 font-bold backdrop-blur-sm
       ${
         isUsed
-          ? "bg-gray-300/30 border-gray-400/30 text-gray-500"
+          ? "bg-transparent border-white/10 text-white/10"
           : "bg-slate-800/40 border-slate-600/40 text-white"
       }
     `}
