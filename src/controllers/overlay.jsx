@@ -362,8 +362,9 @@ const GameTimerDisplay = ({ onTimeEnd, gameInfo, roomInfo }) => {
   };
 
   const getTimerStyle = () => {
-    const minDimension = Math.min(viewport.width, viewport.height);
-    const baseFontSize = Math.max(48, Math.round(minDimension * 0.28));
+    const avgDimension = (viewport.width + viewport.height) / 2;
+    const calculatedSize = Math.round(avgDimension * 0.15);
+    const baseFontSize = Math.max(48, Math.min(calculatedSize, 600));
 
     return {
       fontSize: `${baseFontSize}px`,
