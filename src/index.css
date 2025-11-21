@@ -15,11 +15,13 @@ body,
 }
 
 body {
-  font-family: "Unbounded", "Courier New", Courier, monospace;
+  font-family: "system-ui", "Courier New", Courier, monospace;
   font-optical-sizing: auto;
   font-weight: normal;
   font-style: normal;
   background-color: #101828;
+  letter-spacing: 0.08em;
+  /* text-transform: uppercase; */
 }
 
 ::-webkit-scrollbar {
