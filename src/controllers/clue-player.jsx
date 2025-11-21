@@ -206,7 +206,7 @@ export default function CluePlayer({ mainPlayerRef }) {
                 style={{
                   fontSize: `${fontSize}px`,
                   overflowWrap: "break-word",
-                  wordBreak: "break-all",
+                  wordBreak: "normal",
                   whiteSpace: "normal",
                 }}
               >

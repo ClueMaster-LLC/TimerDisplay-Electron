@@ -362,9 +362,20 @@ const GameTimerDisplay = ({ onTimeEnd, gameInfo, roomInfo }) => {
   };
 
   const getTimerStyle = () => {
-    const avgDimension = (viewport.width + viewport.height) / 2;
-    const calculatedSize = Math.round(avgDimension * 0.15);
-    const baseFontSize = Math.max(48, Math.min(calculatedSize, 600));
+    const combined = 0.7 * viewport.width + 0.3 * viewport.height;
+
+    // How big you'd LIKE it to be based on width
+    const sizeFromWidth = viewport.width * 0.16; // tweak 0.16 to taste
+
+    // How big you're ALLOWED to be based on height
+    const maxFromHeight = viewport.height * 0.5; // at most 50% of viewport height (tweak)
+
+    let fontSize = Math.round(combined * 0.12); // tweak 0.12 to taste
+    // Optional: still cap by height so it never gets ridiculous
+    // const maxFromHeight2d = height * 0.5;
+
+    // const calculatedSize = Math.round(avgDimension * 0.20);
+    const baseFontSize = Math.round(Math.min(sizeFromWidth, maxFromHeight));
 
     return {
       fontSize: `${baseFontSize}px`,
