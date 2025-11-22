@@ -135,6 +135,21 @@ export default function CluePlayer({ mainPlayerRef }) {
     }
   }, [clueState.isActive]);
 
+  const [viewport, setViewport] = React.useState(() => ({
+    width: typeof window !== "undefined" ? window.innerWidth : 0,
+    height: typeof window !== "undefined" ? window.innerHeight : 0,
+  }));
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    };
+    window.addEventListener("resize", handleResize);
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   if (!clueState.isActive || !clueState.type || !clueState.src) {
     return null;
   }
@@ -184,8 +199,13 @@ export default function CluePlayer({ mainPlayerRef }) {
           .replace(/[\n\r\t]+/g, " ")
           .replace(/\s+/g, " ")
           .trim();
-        const fontSize = window.innerHeight / 30;
-        const containerHeight = window.innerHeight * 0.45; // 45vh in pixels
+
+        // Responsive calculations matching timer logic but scaled for text
+        const sizeFromWidth = viewport.width * 0.025; // 2.5% of width
+        const maxFromHeight = viewport.height * 0.04; // 4% of height
+        const fontSize = Math.max(16, Math.round(Math.min(sizeFromWidth, maxFromHeight)));
+
+        const containerHeight = viewport.height * 0.45; // 45% of viewport height
 
         return (
           <div
