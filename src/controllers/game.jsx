@@ -99,7 +99,7 @@ export default function Game({ gameInfo }) {
               if (gameId && prevClueId) {
                 await window.GameBackend.postClueStatus(gameId, prevClueId);
               }
-            } catch (error) {}
+            } catch (error) { }
           }
 
           gameActions.hideClue();
@@ -141,9 +141,24 @@ export default function Game({ gameInfo }) {
     }
   };
 
-  const handleStopGame = () => {
+  const handleStopGame = async () => {
     setIsGameActive(false);
     setIsPaused(false);
+
+    const activeClue = currentClueRef.current;
+    if (activeClue) {
+      const gameId = activeClue.gameId || gameInfo?.gameId;
+      const clueId = activeClue.clueId || activeClue.gameClueId;
+
+      if (gameId && clueId) {
+        try {
+          console.log("Game: Posting clue status for stopped game", { gameId, clueId });
+          await window.GameBackend.postClueStatus(gameId, clueId);
+        } catch (error) {
+          console.error("Game: Error posting clue status on stop:", error);
+        }
+      }
+    }
 
     gameActions.hideClue();
     gameActions.pauseTimer();
@@ -152,12 +167,13 @@ export default function Game({ gameInfo }) {
     currentClueRef.current = null;
 
     try {
+      await window.StoreBackend.set("clue", null);
       window.WorkersBackend.stop(["clue", "timerRequests"]);
-    } catch (error) {}
+    } catch (error) { }
   };
 
   const handlePlayEndVideo = async (data) => {
-    handleStopGame();
+    await handleStopGame();
 
     try {
       const endVideo = await window.GameBackend.getEndVideo();
@@ -169,7 +185,7 @@ export default function Game({ gameInfo }) {
           type: data.isWin ? "end-win" : "end-loss",
         });
       }
-    } catch (error) {}
+    } catch (error) { }
   };
 
   const handleResetGame = () => {
@@ -187,7 +203,7 @@ export default function Game({ gameInfo }) {
 
     try {
       window.WorkersBackend.stop(["clue", "timerRequests"]);
-    } catch (error) {}
+    } catch (error) { }
   };
 
   const handlePauseGame = async () => {
@@ -229,7 +245,7 @@ export default function Game({ gameInfo }) {
         setBackgroundMusic(music);
       }
       await window.WorkersBackend.start(["clue", "timerRequests"]);
-    } catch (error) {}
+    } catch (error) { }
 
     await initializeTimer();
     setTimerInitialized(true);
@@ -282,7 +298,7 @@ export default function Game({ gameInfo }) {
       return;
     }
     if (musicRef.current) {
-      musicRef.current.play().catch((error) => {});
+      musicRef.current.play().catch((error) => { });
     }
   };
 
@@ -301,7 +317,7 @@ export default function Game({ gameInfo }) {
 
   const resumeBackgroundMusic = () => {
     if (musicRef.current) {
-      musicRef.current.play().catch((error) => {});
+      musicRef.current.play().catch((error) => { });
     }
   };
 
@@ -325,7 +341,7 @@ export default function Game({ gameInfo }) {
       if (gameEndDateTime) {
         gameActions.setGameEndTime(gameEndDateTime);
       }
-    } catch (error) {}
+    } catch (error) { }
   };
 
   const pauseMainVideo = () => {
@@ -334,7 +350,7 @@ export default function Game({ gameInfo }) {
 
   const resumeMainVideo = () => {
     const promise = mainPlayerRef.current?.play();
-    promise?.catch((error) => {});
+    promise?.catch((error) => { });
   };
 
   const handleTimerEnd = async () => {
@@ -353,7 +369,7 @@ export default function Game({ gameInfo }) {
 
     try {
       await window.GameBackend.timerEndRequest?.();
-    } catch (error) {}
+    } catch (error) { }
   };
 
   const displayClue = async (clueData) => {
@@ -374,7 +390,7 @@ export default function Game({ gameInfo }) {
       if (clueType === "video" || clueType === "audio") {
         muteBackgroundMusic();
       }
-    } catch (error) {}
+    } catch (error) { }
   };
 
   const determineClueType = (clueData) => {

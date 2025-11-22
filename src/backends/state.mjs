@@ -44,4 +44,8 @@ ipcMain.handle("store:get-all", () => {
   return electronStore.store;
 });
 
+ipcMain.handle("store:set", (_event, key, value) => {
+  storeWrapper.set(key, value);
+});
+
 export default storeWrapper;

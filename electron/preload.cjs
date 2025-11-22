@@ -114,6 +114,7 @@ contextBridge.exposeInMainWorld("WorkersBackend", {
 
 contextBridge.exposeInMainWorld("StoreBackend", {
   get: (key) => ipcRenderer.invoke("store:get", key),
+  set: (key, value) => ipcRenderer.invoke("store:set", key, value),
   getAll: () => ipcRenderer.invoke("store:get-all"),
   onChange: (callback) => {
     const listener = (_event, { key, value }) => {
