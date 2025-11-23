@@ -1,7 +1,7 @@
 {
   "name": "cluemaster-timer",
   "private": true,
-  "version": "2025.9.15-0",
+  "version": "2025.11.21-0",
   "type": "module",
   "author": "Cluemaster-LLC",
   "main": "electron/main.mjs",
@@ -33,6 +33,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "autoprefixer": "^10.4.21",
+    "baseline-browser-mapping": "^2.8.30",
     "concurrently": "^9.2.0",
     "electron": "^37.2.3",
     "electron-builder": "^26.0.12",
@@ -48,6 +49,7 @@
   "build": {
     "appId": "com.cluemaster.timer",
     "productName": "ClueMaster-Timer",
+    "artifactName": "${productName} Setup.${ext}",
     "files": [
       "dist/**/**",
       "electron/main.mjs",
@@ -72,6 +74,13 @@
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "ClueMaster-Timer",
       "include": "build/installer.nsh"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ClueMaster-LLC",
+        "repo": "TimerDisplay-Electron-Updates"
+      }
+    ]
   }
 }
