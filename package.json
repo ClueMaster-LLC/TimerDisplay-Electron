@@ -1,7 +1,7 @@
 {
   "name": "cluemaster-timer",
   "private": true,
-  "version": "2025.11.21-0",
+  "version": "2025.11.23-12",
   "type": "module",
   "author": "Cluemaster-LLC",
   "main": "electron/main.mjs",
@@ -14,7 +14,9 @@
   "dependencies": {
     "axios": "^1.11.0",
     "drivelist": "^12.0.2",
+    "electron-log": "^5.4.3",
     "electron-store": "^10.1.0",
+    "electron-updater": "^6.6.2",
     "mime": "^4.0.7",
     "node-gyp": "^11.4.2",
     "react": "^19.1.0",
