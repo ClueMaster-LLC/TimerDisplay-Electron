@@ -1,7 +1,7 @@
 {
   "name": "cluemaster-timer",
   "private": true,
-  "version": "2025.11.0",
+  "version": "2025.11.1",
   "type": "module",
   "author": "Cluemaster-LLC",
   "main": "electron/main.mjs",
@@ -50,7 +50,7 @@
   },
   "build": {
     "appId": "com.cluemaster.timer",
-    "productName": "ClueMaster-Timer",
+    "productName": "ClueMaster-Timer-DEV",
     "artifactName": "${productName} Setup.${ext}",
     "files": [
       "package.json",

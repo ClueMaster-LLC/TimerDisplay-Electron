@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import StartupMessage from "../components/StartupMessage";
 
 export default function Splash() {
   const [version, setVersion] = useState("");
@@ -163,8 +164,10 @@ export default function Splash() {
   }, [authRequired, updatesChecked, updateInProgress, navigate]);
 
   return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-900 text-white">
-      <h1 className="text-4xl font-medium mb-8">ClueMaster Timer Display</h1>
+    <>
+      <StartupMessage mode="splash" />
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-900 text-white">
+        <h1 className="text-4xl font-medium mb-8">ClueMaster Timer Display</h1>
       <p className="text-xl mb-2">Version: {version}</p>
       {latestVersion && <p className="text-lg mb-2 text-gray-500">Latest: {latestVersion}</p>}
       <p className="text-xl mb-4">Local IP: {localIP}</p>
@@ -180,6 +183,7 @@ export default function Splash() {
       <div className="mt-8">
         <img src="./assets/security_loading.gif" className="w-48 h-auto" />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

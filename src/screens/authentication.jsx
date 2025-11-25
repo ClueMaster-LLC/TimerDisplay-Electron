@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import StartupMessage from '../components/StartupMessage';
 
 export default function Authentication() {
   const [deviceCode, setDeviceCode] = useState('');
@@ -53,8 +54,10 @@ export default function Authentication() {
   }, []);
 
   return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#191F26] text-white">
-      <h1 className="text-4xl font-medium mb-16">ClueMaster TV Display Timer</h1>
+    <>
+      <StartupMessage mode="other" />
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#191F26] text-white">
+        <h1 className="text-4xl font-medium mb-16">ClueMaster TV Display Timer</h1>
       <h2 className="text-2xl mb-4">DEVICE KEY</h2>
       <p className="text-4xl font-bold text-[#4e71cf]">{deviceCode}</p>
       <p className="mt-10 text-xl">{status}</p>
@@ -69,6 +72,7 @@ export default function Authentication() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

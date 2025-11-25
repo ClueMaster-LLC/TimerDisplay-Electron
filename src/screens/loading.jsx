@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import StartupMessage from "../components/StartupMessage";
 
 export default function Loading() {
   const [status, setStatus] = useState("");
@@ -48,8 +49,10 @@ export default function Loading() {
   }, []);
 
   return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#191F26] text-white">
-      <img
+    <>
+      <StartupMessage mode="other" />
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#191F26] text-white">
+        <img
         src="./assets/loading_beaker.gif"
         className="m-4"
         style={{
@@ -72,6 +75,7 @@ export default function Loading() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
