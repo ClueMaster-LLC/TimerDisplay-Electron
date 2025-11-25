@@ -1,7 +1,7 @@
 {
   "name": "cluemaster-timer",
   "private": true,
-  "version": "2025.11.23-12",
+  "version": "2025.11.0",
   "type": "module",
   "author": "Cluemaster-LLC",
   "main": "electron/main.mjs",
@@ -53,13 +53,13 @@
     "productName": "ClueMaster-Timer",
     "artifactName": "${productName} Setup.${ext}",
     "files": [
+      "package.json",
       "dist/**/**",
       "electron/main.mjs",
       "electron/preload.cjs",
       "src/backends/**",
       "src/workers/**",
-      "src/screens/**",
-      "package.json"
+      "src/screens/**"
     ],
     "directories": {
       "buildResources": "build"
@@ -81,7 +81,8 @@
       {
         "provider": "github",
         "owner": "ClueMaster-LLC",
-        "repo": "TimerDisplay-Electron-Updates"
+        "repo": "TimerDisplay-Updates",
+        "releaseType": "release"
       }
     ]
   }
