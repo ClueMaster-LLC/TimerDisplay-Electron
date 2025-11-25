@@ -126,3 +126,17 @@ contextBridge.exposeInMainWorld("StoreBackend", {
     };
   },
 });
+
+// Updater API: allows renderer to request update checks and receive update events
+contextBridge.exposeInMainWorld("UpdaterBackend", {
+  checkForUpdates: (opts) => ipcRenderer.invoke("app-check-for-updates", opts),
+  onUpdateEvent: (callback) => {
+    const listener = (_event, payload) => {
+      callback(payload);
+    };
+    ipcRenderer.on("updater-status", listener);
+    return () => {
+      ipcRenderer.removeListener("updater-status", listener);
+    };
+  },
+});
