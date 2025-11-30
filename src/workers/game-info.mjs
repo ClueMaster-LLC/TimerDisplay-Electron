@@ -20,6 +20,7 @@ async function run() {
       const response = await axios.get(gameDetailsAPIEndpoint, {
         headers,
         validateStatus: () => true,
+        timeout: 2500,
       });
       if (response.status === 401) {
         parentPort.postMessage({ type: "event", event: "reset" });
@@ -66,7 +67,12 @@ async function run() {
       }
       parentPort.postMessage({ type: "event", event: "connectionRestored" });
     } catch (error) {
-      if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
+      if (
+        error.code === "ECONNREFUSED" ||
+        error.code === "ENOTFOUND" ||
+        error.code === "ECONNABORTED" ||
+        error.code === "ETIMEDOUT"
+      ) {
         parentPort.postMessage({ type: "event", event: "connectionError" });
       } else {
         parentPort.postMessage({ type: "event", event: "connectionRestored" });

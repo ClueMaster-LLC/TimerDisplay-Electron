@@ -11,6 +11,7 @@ export default function Player() {
   const [introPlayed, setIntroPlayed] = useState(false);
   const [hasGameBeenActive, setHasGameBeenActive] = useState(false);
   const [isGameActive, setIsGameActive] = useState(false);
+  const [isConnectionError, setIsConnectionError] = useState(false);
 
   useEffect(() => {
     const initializeWorkers = async () => {
@@ -30,6 +31,12 @@ export default function Player() {
           break;
         case "syncRequest":
           navigate("/loading");
+          break;
+        case "connectionError":
+          setIsConnectionError(true);
+          break;
+        case "connectionRestored":
+          setIsConnectionError(false);
           break;
       }
     });
@@ -143,7 +150,10 @@ export default function Player() {
   }, [gameInfo?.gameStatus]);
 
   return (
-    <div className="player-screen h-screen w-screen">
+    <div className="player-screen relative h-full w-full overflow-hidden">
+      {isConnectionError && (
+        <div className="absolute inset-0 border-4 border-red-500 pointer-events-none z-[9999]"></div>
+      )}
       {isGameActive ? <Game gameInfo={gameInfo} /> : <Idle />}
     </div>
   );
