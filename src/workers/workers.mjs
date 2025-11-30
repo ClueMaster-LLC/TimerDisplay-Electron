@@ -21,7 +21,7 @@ const createWorker = async (name, file) => {
       worker.postMessage({ id: message.id, result: true });
     } else if (message.type === "event") {
       const window = getMainWindow();
-      if (window) {
+      if (window && !window.isDestroyed()) {
         window.webContents.send("workers:event", { worker: name, ...message });
       }
     } else if (message.type === "system") {
@@ -112,6 +112,10 @@ const stopWorkers = async (workerNames) => {
   }
 
   return stopped;
+};
+
+export const stopAllWorkers = async () => {
+  await stopWorkers(Object.keys(workers));
 };
 
 ipcMain.handle("workers:start", async (event, workers) => {

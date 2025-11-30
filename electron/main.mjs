@@ -25,6 +25,7 @@ const __dirname = path.dirname(__filename);
 let mainWindow = null;
 let _cursorHideKey = null;
 let _cursorShowKey = null;
+let workersModule = null;
 
 function nodeStreamToWeb(stream) {
   return new ReadableStream({
@@ -102,7 +103,7 @@ function createWindow() {
       if (_cursorShowKey) {
         mainWindow.webContents
           .removeInsertedCSS(_cursorShowKey)
-          .catch(() => {});
+          .catch(() => { });
         _cursorShowKey = null;
       }
       mainWindow.webContents
@@ -110,7 +111,7 @@ function createWindow() {
         .then((k) => {
           _cursorHideKey = k;
         })
-        .catch(() => {});
+        .catch(() => { });
     });
 
     // blur listener to re-focus if it loses focus
@@ -138,7 +139,7 @@ function createWindow() {
           if (_cursorHideKey) {
             mainWindow.webContents
               .removeInsertedCSS(_cursorHideKey)
-              .catch(() => {});
+              .catch(() => { });
             _cursorHideKey = null;
           }
           if (!_cursorShowKey) {
@@ -147,7 +148,7 @@ function createWindow() {
               .then((k) => {
                 _cursorShowKey = k;
               })
-              .catch(() => {});
+              .catch(() => { });
           }
         } else {
           mainWindow.setKiosk(true);
@@ -157,7 +158,7 @@ function createWindow() {
           if (_cursorShowKey) {
             mainWindow.webContents
               .removeInsertedCSS(_cursorShowKey)
-              .catch(() => {});
+              .catch(() => { });
             _cursorShowKey = null;
           }
           mainWindow.webContents
@@ -165,7 +166,7 @@ function createWindow() {
             .then((k) => {
               _cursorHideKey = k;
             })
-            .catch(() => {});
+            .catch(() => { });
         }
       }
     });
@@ -176,7 +177,7 @@ function createWindow() {
       if (_cursorShowKey) {
         mainWindow.webContents
           .removeInsertedCSS(_cursorShowKey)
-          .catch(() => {});
+          .catch(() => { });
         _cursorShowKey = null;
       }
       if (!_cursorHideKey)
@@ -185,7 +186,7 @@ function createWindow() {
           .then((k) => {
             _cursorHideKey = k;
           })
-          .catch(() => {});
+          .catch(() => { });
     });
 
     mainWindow.on("leave-full-screen", () => {
@@ -193,7 +194,7 @@ function createWindow() {
       if (_cursorHideKey) {
         mainWindow.webContents
           .removeInsertedCSS(_cursorHideKey)
-          .catch(() => {});
+          .catch(() => { });
         _cursorHideKey = null;
       }
       if (!_cursorShowKey) {
@@ -202,7 +203,7 @@ function createWindow() {
           .then((k) => {
             _cursorShowKey = k;
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     });
 
@@ -211,7 +212,7 @@ function createWindow() {
       if (_cursorShowKey) {
         mainWindow.webContents
           .removeInsertedCSS(_cursorShowKey)
-          .catch(() => {});
+          .catch(() => { });
         _cursorShowKey = null;
       }
       if (!_cursorHideKey)
@@ -220,7 +221,7 @@ function createWindow() {
           .then((k) => {
             _cursorHideKey = k;
           })
-          .catch(() => {});
+          .catch(() => { });
     });
 
     mainWindow.on("leave-html-full-screen", () => {
@@ -228,7 +229,7 @@ function createWindow() {
       if (_cursorHideKey) {
         mainWindow.webContents
           .removeInsertedCSS(_cursorHideKey)
-          .catch(() => {});
+          .catch(() => { });
         _cursorHideKey = null;
       }
       if (!_cursorShowKey) {
@@ -237,7 +238,7 @@ function createWindow() {
           .then((k) => {
             _cursorShowKey = k;
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     });
 
@@ -247,7 +248,7 @@ function createWindow() {
       if (_cursorHideKey) {
         mainWindow.webContents
           .removeInsertedCSS(_cursorHideKey)
-          .catch(() => {});
+          .catch(() => { });
         _cursorHideKey = null;
       }
       if (!_cursorShowKey) {
@@ -256,7 +257,7 @@ function createWindow() {
           .then((k) => {
             _cursorShowKey = k;
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     });
 
@@ -265,7 +266,7 @@ function createWindow() {
       if (_cursorHideKey) {
         mainWindow.webContents
           .removeInsertedCSS(_cursorHideKey)
-          .catch(() => {});
+          .catch(() => { });
         _cursorHideKey = null;
       }
       if (!_cursorShowKey) {
@@ -274,7 +275,7 @@ function createWindow() {
           .then((k) => {
             _cursorShowKey = k;
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     });
   }
@@ -420,7 +421,7 @@ app.whenReady().then(async () => {
     if (apiToken) store.set("APIToken", apiToken);
 
     await import("../src/backends/splash.mjs");
-    await import("../src/workers/workers.mjs");
+    workersModule = await import("../src/workers/workers.mjs");
 
     setTimeout(async () => {
       await import("../src/backends/authentication.mjs");
@@ -464,27 +465,27 @@ app.whenReady().then(async () => {
           // Get snap name from SNAP_NAME environment variable
           const snapName = process.env.SNAP_NAME || "cluemaster-timer";
           console.log("UPDATER: Running on Ubuntu Core snap, checking for snap updates:", snapName);
-          
+
           // Check if our specific snap has updates available (doesn't trigger updates)
           const { stdout: refreshList } = await execAsync("snap refresh --list");
           console.log("UPDATER: Available snap updates:", refreshList);
-          
+
           if (refreshList && refreshList.includes(snapName)) {
             // Update available for our snap
             send("available", { info: { version: "snap-update" } });
             send("download-progress", { percent: 0 });
-            
+
             // Trigger snap refresh for our specific snap only (snapd handles download and install)
             console.log("UPDATER: Snap update available, triggering refresh for", snapName);
             const refreshProcess = exec(`snap refresh ${snapName}`);
-            
+
             // Monitor progress (snap doesn't provide detailed progress, simulate it)
             let progress = 0;
             const progressInterval = setInterval(() => {
               progress = Math.min(progress + 10, 90);
               send("download-progress", { percent: progress });
             }, 500);
-            
+
             refreshProcess.on("close", (code) => {
               clearInterval(progressInterval);
               if (code === 0) {
@@ -496,7 +497,7 @@ app.whenReady().then(async () => {
                 send("error", { message: `Snap refresh failed with code ${code}` });
               }
             });
-            
+
             return { ok: true, snap: true };
           } else {
             // No updates available for our snap
@@ -593,9 +594,9 @@ app.whenReady().then(async () => {
         const releasesResp = await fetch("https://api.github.com/repos/ClueMaster-LLC/TimerDisplay-Updates/releases", { headers: { Accept: "application/vnd.github+json", "Cache-Control": "no-cache" } });
         if (releasesResp.ok) {
           const releases = await releasesResp.json();
-            const tags = releases.map(r => r.tag_name).join(", ");
-            console.log("UPDATER: Release tags (GitHub order):", tags);
-            send("diagnostic", { releaseTags: releases.map(r => r.tag_name) });
+          const tags = releases.map(r => r.tag_name).join(", ");
+          console.log("UPDATER: Release tags (GitHub order):", tags);
+          send("diagnostic", { releaseTags: releases.map(r => r.tag_name) });
         } else {
           console.log("UPDATER: Releases list fetch failed status", releasesResp.status);
           send("diagnostic", { releasesStatus: releasesResp.status });
@@ -688,6 +689,16 @@ app.whenReady().then(async () => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+
+app.on("before-quit", async (e) => {
+  if (workersModule) {
+    e.preventDefault();
+    await workersModule.stopAllWorkers();
+    workersModule = null;
+    app.quit();
+  }
 });
 
 app.on("window-all-closed", () => {
