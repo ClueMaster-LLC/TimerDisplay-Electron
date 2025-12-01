@@ -17,7 +17,7 @@ export default function StartupMessage({ mode = "splash" }) {
         }
         @keyframes stayThenFadeOut {
           0% { opacity: 1; }
-          50% { opacity: 1; }
+          71.43% { opacity: 1; }
           100% { opacity: 0; }
         }
         .fade-in-stay {
@@ -25,7 +25,7 @@ export default function StartupMessage({ mode = "splash" }) {
         }
         .fade-out {
           opacity: 1;
-          animation: stayThenFadeOut 2s ease-out forwards;
+          animation: stayThenFadeOut 7s ease-out forwards;
         }
       `}</style>
     </>
