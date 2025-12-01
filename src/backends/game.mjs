@@ -31,11 +31,15 @@ const getIntroVideo = () => {
       "intro-media"
     );
 
-    if (!fs.existsSync(videoFilesDirectory)) {
+    if (!videoFilesDirectory || !fs.existsSync(videoFilesDirectory)) {
       return null;
     }
 
     const files = fs.readdirSync(videoFilesDirectory);
+    if (!files || files.length === 0) {
+      return null;
+    }
+
     const introFile = path.join(videoFilesDirectory, files[0]);
 
     if (!introFile) {
@@ -71,11 +75,15 @@ const getEndVideo = () => {
       return null;
     }
 
-    if (!fs.existsSync(videoFilesDirectory)) {
+    if (!videoFilesDirectory || !fs.existsSync(videoFilesDirectory)) {
       return null;
     }
 
     const files = fs.readdirSync(videoFilesDirectory);
+    if (!files || files.length === 0) {
+      return null;
+    }
+
     const endFile = path.join(videoFilesDirectory, files[0]);
     if (!endFile) {
       return null;

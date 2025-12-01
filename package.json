@@ -1,7 +1,7 @@
 {
   "name": "cluemaster-timer",
   "private": true,
-  "version": "2025.11.1",
+  "version": "2025.11.5",
   "type": "module",
   "author": "Cluemaster-LLC",
   "main": "electron/main.mjs",
@@ -61,6 +61,13 @@
       "src/workers/**",
       "src/screens/**"
     ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": ["**/*"]
+      }
+    ],
     "directories": {
       "buildResources": "build"
     },
@@ -74,7 +81,7 @@
       "oneClick": false,
       "perMachine": true,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "ClueMaster-Timer",
+      "shortcutName": "ClueMaster-Timer-DEV",
       "include": "build/installer.nsh"
     },
     "publish": [

@@ -6,6 +6,7 @@ import os from "os";
 import mime from "mime";
 import { exec } from "child_process";
 import { promisify } from "util";
+import crypto from "crypto";
 // electron-updater is a CommonJS module; import default and destructure
 import updaterPkg from "electron-updater";
 const { autoUpdater } = updaterPkg;
@@ -13,12 +14,13 @@ const { autoUpdater } = updaterPkg;
 const execAsync = promisify(exec);
 
 // Rely on electron-builder publish config in package.json; remove manual feed overrides.
-autoUpdater.allowDowngrade = true;
+autoUpdater.allowDowngrade = false;
 
 const homeDirectory = os.homedir();
 const masterDirectory = path.join(homeDirectory, "cluemaster-timer");
 const applicationData = path.join(masterDirectory, "application-data");
 const BASE_MEDIA_DIRECTORY = path.join(applicationData, "media-files");
+const TTS_CACHE_DIRECTORY = path.join(masterDirectory, "tts-cache");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -326,7 +328,7 @@ app.whenReady().then(async () => {
   protocol.handle("media", async (request) => {
     try {
       const url = new URL(request.url);
-      const source = url.hostname; // 'local' or 'external'
+      const source = url.hostname; // 'local', 'external', or 'tts-cache'
       let filePath;
 
       if (source === "local") {
@@ -336,6 +338,17 @@ app.whenReady().then(async () => {
         if (!filePath.startsWith(BASE_MEDIA_DIRECTORY)) {
           console.error(
             "Security violation: Attempted to access unauthorized path:",
+            filePath
+          );
+          return new Response("Forbidden", { status: 403 });
+        }
+      } else if (source === "tts-cache") {
+        const relativePath = url.pathname.slice(1); // remove leading '/'
+        filePath = path.resolve(TTS_CACHE_DIRECTORY, relativePath);
+
+        if (!filePath.startsWith(TTS_CACHE_DIRECTORY)) {
+          console.error(
+            "Security violation: Attempted to access unauthorized TTS cache path:",
             filePath
           );
           return new Response("Forbidden", { status: 403 });
@@ -437,6 +450,349 @@ app.whenReady().then(async () => {
   // Menu.setApplicationMenu(null);
 
   createWindow();
+
+  // TTS: Text-to-Speech using Piper
+  // Ensure TTS cache directory exists
+  if (!fs.existsSync(TTS_CACHE_DIRECTORY)) {
+    fs.mkdirSync(TTS_CACHE_DIRECTORY, { recursive: true });
+  }
+
+  // Track current voice model to detect changes
+  const VOICE_TRACKER_FILE = path.join(TTS_CACHE_DIRECTORY, ".current_voice");
+
+  // Default max cache size (500MB in bytes)
+  const DEFAULT_MAX_CACHE_SIZE = 500 * 1024 * 1024;
+
+  /**
+   * Get TTS max cache size from room config or use default
+   */
+  const getTTSMaxCacheSize = async () => {
+    try {
+      const stateModule = await import("../src/backends/state.mjs");
+      const store = stateModule.default;
+      const roomConfig = store.get("roomConfig");
+      if (roomConfig && typeof roomConfig.TTSMaxFolderSize === "number") {
+        // TTSMaxFolderSize is in MB, convert to bytes
+        const sizeInBytes = roomConfig.TTSMaxFolderSize * 1024 * 1024;
+        console.log(`TTS: Using API TTSMaxFolderSize: ${roomConfig.TTSMaxFolderSize}MB (overriding default)`);
+        return sizeInBytes;
+      }
+    } catch (error) {
+      console.warn("TTS: Could not get TTSMaxFolderSize from roomConfig:", error);
+    }
+    const defaultSizeMB = Math.round(DEFAULT_MAX_CACHE_SIZE / 1024 / 1024);
+    console.log(`TTS: Using default max cache size: ${defaultSizeMB}MB`);
+    return DEFAULT_MAX_CACHE_SIZE;
+  };
+
+  /**
+   * Clean up TTS cache if it exceeds size limit
+   * Deletes oldest files first based on last access time
+   */
+  const cleanupTTSCache = async () => {
+    try {
+      const maxCacheSize = await getTTSMaxCacheSize();
+      
+      if (!fs.existsSync(TTS_CACHE_DIRECTORY)) {
+        return;
+      }
+
+      // Get all wav files with their stats
+      const files = fs.readdirSync(TTS_CACHE_DIRECTORY)
+        .filter(f => f.endsWith(".wav"))
+        .map(f => {
+          const filePath = path.join(TTS_CACHE_DIRECTORY, f);
+          const stats = fs.statSync(filePath);
+          return {
+            name: f,
+            path: filePath,
+            size: stats.size,
+            atime: stats.atime.getTime(), // last access time
+            mtime: stats.mtime.getTime()  // last modified time
+          };
+        });
+
+      if (files.length === 0) {
+        return;
+      }
+
+      // Calculate total cache size
+      const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+      const maxSizeMB = Math.round(maxCacheSize / 1024 / 1024);
+      const currentSizeMB = Math.round(totalSize / 1024 / 1024);
+
+      console.log(`TTS Cache: ${currentSizeMB}MB / ${maxSizeMB}MB (${files.length} files)`);
+
+      if (totalSize <= maxCacheSize) {
+        return; // Cache is within limit
+      }
+
+      // Sort by last access time (oldest first), fallback to modified time
+      files.sort((a, b) => {
+        const timeA = a.atime || a.mtime;
+        const timeB = b.atime || b.mtime;
+        return timeA - timeB;
+      });
+
+      // Delete oldest files until we're under the limit
+      let currentSize = totalSize;
+      let deletedCount = 0;
+      let deletedSize = 0;
+
+      for (const file of files) {
+        if (currentSize <= maxCacheSize * 0.8) { // Leave 20% buffer
+          break;
+        }
+
+        try {
+          fs.unlinkSync(file.path);
+          currentSize -= file.size;
+          deletedSize += file.size;
+          deletedCount++;
+        } catch (err) {
+          console.error("TTS: Failed to delete cache file:", file.path, err);
+        }
+      }
+
+      if (deletedCount > 0) {
+        const deletedMB = Math.round(deletedSize / 1024 / 1024);
+        const newSizeMB = Math.round(currentSize / 1024 / 1024);
+        console.log(`TTS Cache: Deleted ${deletedCount} oldest files (${deletedMB}MB), cache now ${newSizeMB}MB`);
+      }
+    } catch (error) {
+      console.error("TTS: Error during cache cleanup:", error);
+    }
+  };
+
+  /**
+   * Get the correct resources path for both dev and production
+   */
+  const getResourcesPath = () => {
+    if (app.isPackaged) {
+      // Production: use process.resourcesPath
+      return process.resourcesPath;
+    } else {
+      // Development: go up from electron directory to project root
+      return path.join(__dirname, "..");
+    }
+  };
+
+  /**
+   * Find available Piper voice model and clear cache if voice changed
+   * This function is called on every synthesis to detect voice changes in real-time
+   */
+  const findPiperVoice = () => {
+    const resourcesPath = getResourcesPath();
+    const voicesDir = path.join(resourcesPath, "resources/piper/voices");
+    
+    if (!fs.existsSync(voicesDir)) {
+      console.error("TTS: Voices directory not found:", voicesDir);
+      return null;
+    }
+
+    // Re-scan directory on every call to detect new voices
+    const files = fs.readdirSync(voicesDir);
+    const onnxFile = files.find(f => f.endsWith(".onnx") && !f.endsWith(".onnx.json") && !f.includes(".backup") && !f.includes(".disabled"));
+    
+    if (onnxFile) {
+      const modelPath = path.join(voicesDir, onnxFile);
+      
+      // Check if voice has changed since last synthesis
+      let previousVoice = null;
+      if (fs.existsSync(VOICE_TRACKER_FILE)) {
+        try {
+          previousVoice = fs.readFileSync(VOICE_TRACKER_FILE, "utf8").trim();
+        } catch (e) {
+          console.warn("TTS: Could not read voice tracker file:", e);
+        }
+      }
+
+      // Only clear cache if voice has actually changed
+      if (previousVoice && previousVoice !== onnxFile) {
+        console.log(`TTS: Voice changed from '${previousVoice}' to '${onnxFile}' - clearing cache...`);
+        try {
+          const cacheFiles = fs.readdirSync(TTS_CACHE_DIRECTORY);
+          let clearedCount = 0;
+          for (const file of cacheFiles) {
+            if (file.endsWith(".wav")) {
+              fs.unlinkSync(path.join(TTS_CACHE_DIRECTORY, file));
+              clearedCount++;
+            }
+          }
+          console.log(`TTS: Cleared ${clearedCount} cached audio files`);
+        } catch (error) {
+          console.error("TTS: Error clearing cache after voice change:", error);
+        }
+      }
+
+      // Update the voice tracker file
+      try {
+        fs.writeFileSync(VOICE_TRACKER_FILE, onnxFile, "utf8");
+      } catch (e) {
+        console.warn("TTS: Could not write voice tracker file:", e);
+      }
+
+      return modelPath;
+    }
+
+    console.error("TTS: No .onnx voice model found in:", voicesDir);
+    return null;
+  };
+
+  /**
+   * Synthesize speech using Piper
+   */
+  ipcMain.handle("tts:synthesize", async (_event, options) => {
+    try {
+      const { text } = options;
+      
+      if (!text || text.trim().length === 0) {
+        throw new Error("Text is required");
+      }
+
+      // Clean up cache if it exceeds size limit
+      await cleanupTTSCache();
+
+      // Check for voice changes FIRST (before checking cache)
+      // This will clear cache if voice has changed
+      const voiceModel = findPiperVoice();
+      if (!voiceModel) {
+        throw new Error("No Piper voice model found. Please install a voice model in resources/piper/voices/");
+      }
+
+      // Generate cache key from text
+      const hash = crypto.createHash("md5").update(text).digest("hex");
+      const outputFile = path.join(TTS_CACHE_DIRECTORY, `${hash}.wav`);
+
+      // Check if already cached (after voice change detection)
+      if (fs.existsSync(outputFile)) {
+        console.log("TTS: Using cached audio:", outputFile);
+        return `media://tts-cache/${hash}.wav`;
+      }
+
+      // Get Piper executable path
+      const resourcesPath = getResourcesPath();
+      const piperExe = path.join(resourcesPath, "resources/piper/piper/piper.exe");
+
+      console.log("TTS: Piper executable path:", piperExe);
+      
+      if (!fs.existsSync(piperExe)) {
+        throw new Error("Piper executable not found at: " + piperExe);
+      }
+
+      const textLength = text.length;
+      console.log(`TTS: Synthesizing speech with Piper (${textLength} characters)...`);
+      console.log("TTS: Voice model:", voiceModel);
+      console.log("TTS: Output file:", outputFile);
+
+      // Create a temporary file for long text to avoid command line length limits
+      const tempTextFile = path.join(TTS_CACHE_DIRECTORY, `${hash}_input.txt`);
+      fs.writeFileSync(tempTextFile, text, "utf8");
+
+      // Run Piper to synthesize speech with optimized settings for speed
+      // Performance flags:
+      // --noise_scale 0.333 (lower = faster, less variation)
+      // --length_scale 0.9 (slightly faster speech)
+      // --sentence_silence 0.1 (reduce pauses between sentences)
+      const command = `cmd /c "type "${tempTextFile}" | "${piperExe}" --model "${voiceModel}" --output_file "${outputFile}" --noise_scale 0.333 --length_scale 0.9 --sentence_silence 0.1"`;
+      
+      console.log("TTS: Executing Piper command with performance optimizations...");
+      const synthesisStart = Date.now();
+      
+      // Increase timeout and buffer for long text (up to 60 seconds, 50MB buffer)
+      const timeout = Math.max(30000, Math.ceil(textLength / 50) * 1000); // ~1s per 50 chars
+      
+      await execAsync(command, {
+        cwd: path.dirname(piperExe),
+        maxBuffer: 50 * 1024 * 1024, // 50MB buffer for very long audio
+        timeout: timeout,
+        windowsHide: true // Hide command window for better performance
+      });
+
+      const synthesisTime = Date.now() - synthesisStart;
+      console.log(`TTS: Synthesis completed in ${synthesisTime}ms`);
+
+      // Clean up temp text file
+      try {
+        fs.unlinkSync(tempTextFile);
+      } catch (e) {
+        console.warn("TTS: Could not delete temp text file:", e);
+      }
+
+      if (!fs.existsSync(outputFile)) {
+        throw new Error("Piper failed to generate audio file");
+      }
+
+      console.log("TTS: Speech synthesis completed successfully");
+      return `media://tts-cache/${hash}.wav`;
+    } catch (error) {
+      console.error("TTS: Synthesis error:", error);
+      throw error;
+    }
+  });
+
+  /**
+   * Check for voice changes and clear cache if needed
+   */
+  ipcMain.handle("tts:checkVoiceChange", async () => {
+    try {
+      // This will detect voice changes and clear cache if needed
+      const voiceModel = findPiperVoice();
+      return { success: true, currentVoice: voiceModel ? path.basename(voiceModel) : null };
+    } catch (error) {
+      console.error("TTS: Error checking voice change:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  /**
+   * Get available voices
+   */
+  ipcMain.handle("tts:getVoices", async () => {
+    try {
+      const resourcesPath = getResourcesPath();
+      const voicesDir = path.join(resourcesPath, "resources/piper/voices");
+      
+      if (!fs.existsSync(voicesDir)) {
+        console.log("TTS: Voices directory not found:", voicesDir);
+        return [];
+      }
+
+      const files = fs.readdirSync(voicesDir);
+      const voices = files
+        .filter(f => f.endsWith(".onnx") && !f.endsWith(".onnx.json") && !f.includes(".backup") && !f.includes(".disabled"))
+        .map(f => ({
+          name: f.replace(".onnx", ""),
+          path: path.join(voicesDir, f),
+        }));
+
+      return voices;
+    } catch (error) {
+      console.error("TTS: Error getting voices:", error);
+      return [];
+    }
+  });
+
+  /**
+   * Clear TTS cache
+   */
+  ipcMain.handle("tts:clearCache", async () => {
+    try {
+      if (fs.existsSync(TTS_CACHE_DIRECTORY)) {
+        const files = fs.readdirSync(TTS_CACHE_DIRECTORY);
+        for (const file of files) {
+          if (file.endsWith(".wav")) {
+            fs.unlinkSync(path.join(TTS_CACHE_DIRECTORY, file));
+          }
+        }
+      }
+      console.log("TTS: Cache cleared");
+      return true;
+    } catch (error) {
+      console.error("TTS: Error clearing cache:", error);
+      throw error;
+    }
+  });
 
   // Helper function to detect if running on Ubuntu Core with snap
   const isUbuntuCoreSnap = () => {

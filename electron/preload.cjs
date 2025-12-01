@@ -140,3 +140,11 @@ contextBridge.exposeInMainWorld("UpdaterBackend", {
     };
   },
 });
+
+// TTS API: allows renderer to synthesize speech using Piper
+contextBridge.exposeInMainWorld("TTSBackend", {
+  synthesize: (options) => ipcRenderer.invoke("tts:synthesize", options),
+  getVoices: () => ipcRenderer.invoke("tts:getVoices"),
+  clearCache: () => ipcRenderer.invoke("tts:clearCache"),
+  checkVoiceChange: () => ipcRenderer.invoke("tts:checkVoiceChange"),
+});
