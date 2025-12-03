@@ -98,19 +98,18 @@ async function run() {
         validateStatus: () => true,
       });
 
-      if (request.status === 401) {
+      if (request.status === 200) {
+        parentPort.postMessage({ type: "event", event: "connectionRestored" });
+      } else if (request.status === 401) {
         console.log("Worker: 401 client error. Resetting video player to auth screen");
         parentPort.postMessage({ type: "event", event: "reset" });
-      }
-
-      if (request.status !== 200 && request.status !== 401) {
+      } else {
         console.log(
           "Worker: Error uploading device heartbeat details - ",
           request.status
         );
+        parentPort.postMessage({ type: "event", event: "connectionError" });
       }
-
-      parentPort.postMessage({ type: "event", event: "connectionRestored" });
 
       await new Promise((resolve) => setTimeout(resolve, 9000)); // total ~10s loop
     } catch (error) {

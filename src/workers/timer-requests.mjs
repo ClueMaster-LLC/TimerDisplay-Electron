@@ -21,31 +21,32 @@ async function run() {
         headers,
         validateStatus: () => true,
       });
-      if (response.status === 401) {
-        parentPort.postMessage({ type: "event", event: "reset" });
-      }
+      if (response.status === 200) {
+        if (response.data && typeof response.data === "object") {
+          const deviceRequestID = response.data.DeviceRequestid;
 
-      if (response.data && typeof response.data === "object") {
-        const deviceRequestID = response.data.DeviceRequestid;
-
-        // acknowledge timer requests
-        const postDeviceAPIEndpoint = postDeviceAPI
-          .replace("{device_unique_code}", deviceUniqueID)
-          .replace("{deviceRequestId}", deviceRequestID);
-        const request = await axios.post(postDeviceAPIEndpoint, null, {
-          headers,
-          validateStatus: () => true,
-        });
-        if (request.status === 200) {
-          parentPort.postMessage({
-            type: "event",
-            component: "timer",
-            action: "update",
+          // acknowledge timer requests
+          const postDeviceAPIEndpoint = postDeviceAPI
+            .replace("{device_unique_code}", deviceUniqueID)
+            .replace("{deviceRequestId}", deviceRequestID);
+          const request = await axios.post(postDeviceAPIEndpoint, null, {
+            headers,
+            validateStatus: () => true,
           });
+          if (request.status === 200) {
+            parentPort.postMessage({
+              type: "event",
+              component: "timer",
+              action: "update",
+            });
+          }
         }
+        parentPort.postMessage({ type: "event", event: "connectionRestored" });
+      } else if (response.status === 401) {
+        parentPort.postMessage({ type: "event", event: "reset" });
+      } else {
+        parentPort.postMessage({ type: "event", event: "connectionError" });
       }
-
-      parentPort.postMessage({ type: "event", event: "connectionRestored" });
     } catch (error) {
       if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
         parentPort.postMessage({ type: "event", event: "connectionError" });

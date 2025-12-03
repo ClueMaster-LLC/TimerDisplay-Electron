@@ -24,32 +24,35 @@ async function run() {
         headers,
         validateStatus: () => true,
       });
-      if (response.status === 401) {
-        parentPort.postMessage({ type: "event", event: "reset" });
-      }
-      if (response.data.hasOwnProperty("status") === false) {
-        const clue = response.data;
-        // console.log("Worker: New clue received:", clue);
-        const clueId = clue.gameClueId;
-        // post request to acknowledge clue received
-        const postGameClueAPIEndpoint = postGameClueAPI
-          .replace("{gameId}", gameId)
-          .replace("{gameClueId}", clueId);
+      if (response.status === 200) {
+        if (response.data.hasOwnProperty("status") === false) {
+          const clue = response.data;
+          // console.log("Worker: New clue received:", clue);
+          const clueId = clue.gameClueId;
+          // post request to acknowledge clue received
+          const postGameClueAPIEndpoint = postGameClueAPI
+            .replace("{gameId}", gameId)
+            .replace("{gameClueId}", clueId);
 
-        const request = await axios.post(postGameClueAPIEndpoint, null, {
-          headers,
-          validateStatus: () => true,
-        });
-        if (request.status === 200) {
-          await setStore("clue", clue);
-          parentPort.postMessage({
-            type: "event",
-            component: "clue",
-            action: "show-hide",
+          const request = await axios.post(postGameClueAPIEndpoint, null, {
+            headers,
+            validateStatus: () => true,
           });
+          if (request.status === 200) {
+            await setStore("clue", clue);
+            parentPort.postMessage({
+              type: "event",
+              component: "clue",
+              action: "show-hide",
+            });
+          }
         }
+        parentPort.postMessage({ type: "event", event: "connectionRestored" });
+      } else if (response.status === 401) {
+        parentPort.postMessage({ type: "event", event: "reset" });
+      } else {
+        parentPort.postMessage({ type: "event", event: "connectionError" });
       }
-      parentPort.postMessage({ type: "event", event: "connectionRestored" });
     } catch (error) {
       if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
         parentPort.postMessage({ type: "event", event: "connectionError" });

@@ -22,10 +22,7 @@ async function run() {
         validateStatus: () => true,
         timeout: 2500,
       });
-      if (response.status === 401) {
-        parentPort.postMessage({ type: "event", event: "reset" });
-      }
-      if (response.data) {
+      if (response.status === 200 && response.data) {
         const gameStatus = response.data.gameStatus;
         const cluesUsed = response.data.noOfCluesUsed;
         const currentGameInfo = await getStore("gameInfo");
@@ -64,8 +61,12 @@ async function run() {
           component: "game",
           status: gameStatus,
         });
+        parentPort.postMessage({ type: "event", event: "connectionRestored" });
+      } else if (response.status === 401) {
+        parentPort.postMessage({ type: "event", event: "reset" });
+      } else {
+        parentPort.postMessage({ type: "event", event: "connectionError" });
       }
-      parentPort.postMessage({ type: "event", event: "connectionRestored" });
     } catch (error) {
       if (
         error.code === "ECONNREFUSED" ||
