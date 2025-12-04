@@ -36,17 +36,18 @@ async function downloadFileStream(url, filePath, headers = {}) {
 }
 
 ipcMain.handle("loading:worker", async () => {
-  try {
-    const deviceUniqueCode = store.get("uniqueCode");
-    const apiKey = store.get("APIToken");
-    const roomInfoAPIEndpoint = roomInfoAPI.replace(
-      "{device_unique_code}",
-      deviceUniqueCode
-    );
-    const apiEndpointHeader = {
-      Authorization: `Basic ${deviceUniqueCode}:${apiKey}`,
-    };
-    while (true) {
+  const deviceUniqueCode = store.get("uniqueCode");
+  const apiKey = store.get("APIToken");
+  const roomInfoAPIEndpoint = roomInfoAPI.replace(
+    "{device_unique_code}",
+    deviceUniqueCode
+  );
+  const apiEndpointHeader = {
+    Authorization: `Basic ${deviceUniqueCode}:${apiKey}`,
+  };
+
+  while (true) {
+    try {
       // confirming media files
       const window = getMainWindow();
       window.webContents.send("loading:status", {
@@ -58,6 +59,11 @@ ipcMain.handle("loading:worker", async () => {
         headers: apiEndpointHeader,
         validateStatus: () => true,
       });
+
+      if (roomInfoAPIRequest.status !== 200) {
+        throw new Error(`API Error: ${roomInfoAPIRequest.status}`);
+      }
+
       if (roomInfoAPIRequest.data !== "No Configurations Files Found") {
         const roomMediaFilesDirectory = path.join(
           applicationData,
@@ -405,22 +411,24 @@ ipcMain.handle("loading:worker", async () => {
         );
       }
 
+      await updateDeviceDetails();
       window.webContents.send("loading:success", { success: true });
       return { success: true };
+    } catch (error) {
+      console.log("Loading: Worker error - ", error.message);
+      const window = getMainWindow();
+
+      if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND' || error.message.includes('Network Error') || error.message.includes('API Error')) {
+        window.webContents.send("loading:status", {
+          status: "ClueMaster Servers Not Responding… Trying to Reconnect",
+        });
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        continue;
+      }
+
+      window.webContents.send("loading:success", { success: false });
+      return { success: false };
     }
-  } catch (error) {
-    console.log("Loading: Worker error - ", error.message);
-    // console.log("Loading: Worker error - ", error);
-    // console.log("Full URL:", musicMediaFile);
-    // console.log("Parsed filename:", fileName);
-    const window = getMainWindow();
-    window.webContents.send("loading:success", { success: false });
-    return { success: false };
-    // const window = getMainWindow()
-    // window.webContents.send('loading:success', {'success': true})
-    // return {success: true}
-  } finally {
-    await updateDeviceDetails();
   }
 });
 
