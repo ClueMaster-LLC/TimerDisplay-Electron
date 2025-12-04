@@ -410,6 +410,9 @@ ipcMain.handle("loading:worker", async () => {
     }
   } catch (error) {
     console.log("Loading: Worker error - ", error.message);
+    // console.log("Loading: Worker error - ", error);
+    // console.log("Full URL:", musicMediaFile);
+    // console.log("Parsed filename:", fileName);
     const window = getMainWindow();
     window.webContents.send("loading:success", { success: false });
     return { success: false };

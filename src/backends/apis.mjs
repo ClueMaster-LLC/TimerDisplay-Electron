@@ -1,4 +1,11 @@
-const baseAPI = "https://dev-deviceapi.cluemaster.io";
+import config from '../config/environment.mjs';
+
+// Use environment-specific API base URL
+// Development: https://dev-deviceapi.cluemaster.io
+// Production: https://deviceapi.cluemaster.io (or your prod URL)
+const baseAPI = config.apiBaseUrl || "https://dev-deviceapi.cluemaster.io";
+
+console.log(`API Backend initialized with: ${baseAPI} (${config.environment} mode)`);
 
 const generalRequestAPI = baseAPI + "/api/Device/GetGeneralRequest";
 const devicesFilesAPI = baseAPI + "/api/Device/GetDeviceFiles/{device_unique_code}";

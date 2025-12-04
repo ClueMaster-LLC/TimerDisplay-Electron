@@ -1,7 +1,7 @@
 {
   "name": "cluemaster-timer",
   "private": true,
-  "version": "2025.11.5",
+  "version": "2025.11.17",
   "type": "module",
   "author": "Cluemaster-LLC",
   "main": "electron/main.mjs",
@@ -9,6 +9,12 @@
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron ./electron/main.mjs\"",
     "build": "vite build",
+    "build:dev": "node build-scripts/inject-env.mjs development && vite build --mode development",
+    "build:prod": "node build-scripts/inject-env.mjs production && vite build --mode production",
+    "publish:dev": "npm run build:dev && electron-builder --win --x64 --publish always --config.appId=\"com.cluemaster.timer.dev\" --config.publish.repo=\"TimerDisplay-Updates-Dev\"",
+    "publish:prod": "npm run build:prod && electron-builder --win --x64 --publish always --config.appId=\"com.cluemaster.timer.prod\" --config.productName=\"ClueMaster-Timer-Display\" --config.publish.repo=\"TimerDisplay-Updates\"",
+    "package:dev": "npm run build:dev && electron-builder --win --x64 --publish never --config.appId=\"com.cluemaster.timer.dev\"",
+    "package:prod": "npm run build:prod && electron-builder --win --x64 --publish never --config.appId=\"com.cluemaster.timer.prod\" --config.productName=\"ClueMaster-Timer-Display\"",
     "start": "electron ./electron/main.mjs"
   },
   "dependencies": {
@@ -50,8 +56,8 @@
   },
   "build": {
     "appId": "com.cluemaster.timer",
-    "productName": "ClueMaster-Timer-DEV",
-    "artifactName": "${productName} Setup.${ext}",
+    "productName": "ClueMaster-Timer-Display-DEV",
+    "artifactName": "${productName}-Setup.${ext}",
     "files": [
       "package.json",
       "dist/**/**",
@@ -59,7 +65,8 @@
       "electron/preload.cjs",
       "src/backends/**",
       "src/workers/**",
-      "src/screens/**"
+      "src/screens/**",
+      "src/config/**"
     ],
     "extraResources": [
       {
@@ -79,18 +86,18 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": true,
-      "allowToChangeInstallationDirectory": true,
-      "shortcutName": "ClueMaster-Timer-DEV",
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "installerHeader": "build/cluemaster.ico",
+      "installerHeaderIcon": "build/cluemaster.ico",
+      "shortcutName": "${productName}",
       "include": "build/installer.nsh"
     },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "ClueMaster-LLC",
-        "repo": "TimerDisplay-Updates",
-        "releaseType": "release"
-      }
-    ]
+    "publish": {
+      "provider": "github",
+      "owner": "ClueMaster-LLC",
+      "repo": "TimerDisplay-Updates",
+      "releaseType": "release"
+    }
   }
 }

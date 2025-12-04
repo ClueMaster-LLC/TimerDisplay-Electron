@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("SplashBackend", {
   worker: () => ipcRenderer.invoke("splash:worker"),
   getVersion: () => ipcRenderer.invoke("splash:get-version"),
   getLocalIP: () => ipcRenderer.invoke("splash:get-local-ip"),
+  getProductName: () => ipcRenderer.invoke("splash:get-product-name"),
   authenticate: (callback) => {
     const listener = (_event, data) => {
       callback(data.authenticate);
@@ -130,6 +131,7 @@ contextBridge.exposeInMainWorld("StoreBackend", {
 // Updater API: allows renderer to request update checks and receive update events
 contextBridge.exposeInMainWorld("UpdaterBackend", {
   checkForUpdates: (opts) => ipcRenderer.invoke("app-check-for-updates", opts),
+  getUpdateRepo: () => ipcRenderer.invoke("app-get-update-repo"),
   onUpdateEvent: (callback) => {
     const listener = (_event, payload) => {
       callback(payload);

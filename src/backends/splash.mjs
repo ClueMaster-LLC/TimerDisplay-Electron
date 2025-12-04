@@ -6,10 +6,22 @@ import axios from 'axios';
 import { devicesFilesAPI, generateAPITokenAPI } from './apis.mjs';
 import store from "./state.mjs"
 import { getMainWindow } from '../../electron/main.mjs';
+import { config } from '../config/environment.mjs';
 
+import { app } from 'electron';
 import { createRequire } from "module";
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const require = createRequire(import.meta.url);
-const _package  = require("../../package.json")
+// In packaged app, load from app.getAppPath(), otherwise relative path
+const packagePath = app.isPackaged 
+    ? path.join(app.getAppPath(), "package.json")
+    : path.join(__dirname, "../../package.json");
+const _package  = require(packagePath)
 
 const homeDirectory = os.homedir()
 const masterDirectory = path.join(homeDirectory, "cluemaster-timer")
@@ -147,5 +159,13 @@ ipcMain.handle("splash:get-version", async() => {
 ipcMain.handle("splash:get-local-ip", async() => {
     const networkAddress = await getDeviceIPv4Address()
     return networkAddress
+})
+
+ipcMain.handle("splash:get-product-name", async() => {
+    // Use environment variable set at build time
+    const productName = config.productName || "ClueMaster Timer Display";
+    
+    // Replace hyphens with spaces for display
+    return productName.replace(/-/g, ' ');
 })
 

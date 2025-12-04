@@ -5,6 +5,7 @@ import StartupMessage from '../components/StartupMessage';
 export default function Authentication() {
   const [deviceCode, setDeviceCode] = useState('');
   const [localIP, setLocalIP] = useState('');
+  const [productName, setProductName] = useState('ClueMaster Timer Display');
   const [status, setStatus] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressMax, setProgressMax] = useState(0);
@@ -18,6 +19,16 @@ export default function Authentication() {
       setLocalIP(networkAddress)
     }
     fetchDeviceIDAndNetworkAddress()
+
+    const fetchProductName = async () => {
+      try {
+        const name = await window.SplashBackend.getProductName();
+        setProductName(name);
+      } catch (error) {
+        console.error("Authentication: Error fetching product name:", error);
+      }
+    };
+    fetchProductName();
 
     window.AuthenticationBackend.worker()
 
@@ -57,7 +68,7 @@ export default function Authentication() {
     <>
       <StartupMessage mode="other" />
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#191F26] text-white">
-        <h1 className="text-4xl font-medium mb-16">ClueMaster TV Display Timer</h1>
+        <h1 className="text-4xl font-medium mb-16">{productName}</h1>
       <h2 className="text-2xl mb-4">DEVICE KEY</h2>
       <p className="text-4xl font-bold text-[#4e71cf]">{deviceCode}</p>
       <p className="mt-10 text-xl">{status}</p>

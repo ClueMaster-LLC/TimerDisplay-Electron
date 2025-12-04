@@ -11,6 +11,8 @@ export default function Splash() {
   const [updateInProgress, setUpdateInProgress] = useState(false);
   const [updatesChecked, setUpdatesChecked] = useState(false);
   const [latestVersion, setLatestVersion] = useState("");
+  const [updateRepo, setUpdateRepo] = useState("");
+  const [productName, setProductName] = useState("ClueMaster Timer Display");
   const [authRequired, setAuthRequired] = useState(null);
   const navigate = useNavigate();
   
@@ -22,8 +24,12 @@ export default function Splash() {
     const fetchVersionAndNetworkAddress = async () => {
       const version = await window.SplashBackend.getVersion();
       const networkAddress = await window.SplashBackend.getLocalIP();
+      const repo = await window.UpdaterBackend.getUpdateRepo();
+      const appName = await window.SplashBackend.getProductName();
       setVersion(version);
       setLocalIP(networkAddress);
+      setUpdateRepo(repo);
+      setProductName(appName);
     };
     fetchVersionAndNetworkAddress();
 
@@ -73,7 +79,14 @@ export default function Splash() {
               }
               // main process will quit & install; nothing else to do here
             } else if (t === "error") {
-              setUpdateStatus(`Update error: ${payload && payload.message ? payload.message : 'unknown'}`);
+              // Log full error details to console for debugging
+              try {
+                console.error("Update check error:", payload && payload.message ? payload.message : 'unknown');
+              } catch (logError) {
+                // Silently fail if logging fails (e.g., Linux log char limit)
+              }
+              // Show user-friendly message on screen
+              setUpdateStatus("Unable to check for updates due to a technical error");
               setUpdateInProgress(false);
               updateInProgressRef.current = false;
               setUpdatesChecked(true);
@@ -91,7 +104,14 @@ export default function Splash() {
               setUpdateStatus(`Manual download in progress: ${pct}%`);
               setUpdateInProgress(true);
             } else if (t === "manual-download-error") {
-              setUpdateStatus(`Manual update error: ${payload && payload.message ? payload.message : 'unknown'}`);
+              // Log full error details to console for debugging
+              try {
+                console.error("Manual update error:", payload && payload.message ? payload.message : 'unknown');
+              } catch (logError) {
+                // Silently fail if logging fails (e.g., Linux log char limit)
+              }
+              // Show user-friendly message on screen
+              setUpdateStatus("Unable to download update due to a technical error");
               setUpdateInProgress(false);
               setUpdatesChecked(true);
             } else if (t === "manual-download-complete") {
@@ -113,7 +133,14 @@ export default function Splash() {
             const DEV_UPDATE_TEST = false; // simulation disabled; showing real GitHub release version
             await window.UpdaterBackend.checkForUpdates({ forceDev: DEV_UPDATE_TEST, allowQuit: false });
           } catch (e) {
-            setUpdateStatus(`Update check failed: ${e && e.message ? e.message : String(e)}`);
+            // Log full error details to console for debugging
+            try {
+              console.error("Update check failed:", e && e.message ? e.message : String(e));
+            } catch (logError) {
+              // Silently fail if logging fails (e.g., Linux log char limit)
+            }
+            // Show user-friendly message on screen
+            setUpdateStatus("Unable to check for updates due to a technical error");
             setUpdatesChecked(true);
             updatesCheckedRef.current = true;
           }
@@ -124,7 +151,14 @@ export default function Splash() {
           updatesCheckedRef.current = true;
         }
       } catch (e) {
-        setUpdateStatus(`Updater init error: ${e && e.message ? e.message : String(e)}`);
+        // Log full error details to console for debugging
+        try {
+          console.error("Updater init error:", e && e.message ? e.message : String(e));
+        } catch (logError) {
+          // Silently fail if logging fails (e.g., Linux log char limit)
+        }
+        // Show user-friendly message on screen
+        setUpdateStatus("Unable to initialize updater due to a technical error");
         setUpdatesChecked(true);
         updatesCheckedRef.current = true;
       }
@@ -155,10 +189,10 @@ export default function Splash() {
 
     // Navigate based on authentication status
     if (authRequired) {
-      const timer = setTimeout(() => navigate("/authentication"), 2000);
+      const timer = setTimeout(() => navigate("/authentication"), 3000);
       return () => clearTimeout(timer);
     } else {
-      const timer = setTimeout(() => navigate("/loading"), 700);
+      const timer = setTimeout(() => navigate("/loading"), 3000);
       return () => clearTimeout(timer);
     }
   }, [authRequired, updatesChecked, updateInProgress, navigate]);
@@ -167,17 +201,17 @@ export default function Splash() {
     <>
       <StartupMessage mode="splash" />
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-900 text-white">
-        <h1 className="text-4xl font-medium mb-8">ClueMaster Timer Display</h1>
+        <h1 className="text-4xl font-medium mb-8">{productName}</h1>
       <p className="text-xl mb-2">Version: {version}</p>
+      {updateRepo && <p className="text-sm mb-1 text-gray-500">Update Repo: {updateRepo}</p>}
       {latestVersion && <p className="text-lg mb-2 text-gray-500">Latest: {latestVersion}</p>}
-      <p className="text-xl mb-4">Local IP: {localIP}</p>
+      <p className="text-xl mb-4" style={{ marginTop: '2rem' }}>Local IP: {localIP}</p>
       <p className="text-xl text-gray-400">{updateStatus ? updateStatus : status}</p>
       {updateInProgress && (
-        <div className="w-64 mt-3">
+        <div className="w-64 mt-3 flex flex-col items-center">
           <div className="h-3 w-full bg-gray-700 rounded overflow-hidden">
             <div className="bg-green-500 h-full" style={{ width: `${downloadPercent}%` }} />
           </div>
-          <div className="text-sm text-gray-400 mt-1">{downloadPercent}%</div>
         </div>
       )}
       <div className="mt-8">

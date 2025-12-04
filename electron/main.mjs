@@ -10,11 +10,22 @@ import crypto from "crypto";
 // electron-updater is a CommonJS module; import default and destructure
 import updaterPkg from "electron-updater";
 const { autoUpdater } = updaterPkg;
+import log from "electron-log";
 
 const execAsync = promisify(exec);
 
+// Configure electron-updater logging to reduce verbosity
+autoUpdater.logger = log;
+autoUpdater.logger.transports.file.level = "warn"; // Only log warnings and errors
+autoUpdater.logger.transports.console.level = "warn"; // Reduce console output
+
 // Rely on electron-builder publish config in package.json; remove manual feed overrides.
 autoUpdater.allowDowngrade = false;
+autoUpdater.disableWebInstaller = true; // Not using web installer
+
+// Note: UPDATE_REPO will be set after environment config is loaded
+let UPDATE_REPO = 'TimerDisplay-Updates'; // Default to production
+let isDevBuild = !app.isPackaged; // Default: dev mode if not packaged
 
 const homeDirectory = os.homedir();
 const masterDirectory = path.join(homeDirectory, "cluemaster-timer");
@@ -28,6 +39,7 @@ let mainWindow = null;
 let _cursorHideKey = null;
 let _cursorShowKey = null;
 let workersModule = null;
+let backgroundUpdateInterval = null;
 
 function nodeStreamToWeb(stream) {
   return new ReadableStream({
@@ -47,10 +59,11 @@ export function getMainWindow() {
 }
 
 function createWindow() {
-  const isDev = !app.isPackaged;
+  const isUnpackagedDev = !app.isPackaged;
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-  if (isDev) {
+  if (isUnpackagedDev) {
+    // Running via npm run dev
     mainWindow = new BrowserWindow({
       show: false,
       frame: true,
@@ -76,7 +89,35 @@ function createWindow() {
         mainWindow.setFullScreen(!mainWindow.isFullScreen());
       }
     });
+  } else if (isDevBuild) {
+    // Packaged DEV build - windowed mode like npm run dev
+    mainWindow = new BrowserWindow({
+      show: false,
+      frame: true,
+      resizable: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        webSecurity: true,
+        preload: path.join(__dirname, "preload.cjs"),
+      },
+    });
+
+    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+
+    mainWindow.once("ready-to-show", () => {
+      mainWindow.show();
+      mainWindow.focus();
+    });
+
+    mainWindow.webContents.on("before-input-event", (event, input) => {
+      if (input.type === "keyDown" && input.code === "F11") {
+        event.preventDefault();
+        mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      }
+    });
   } else {
+    // Packaged PROD build - fullscreen kiosk mode
     mainWindow = new BrowserWindow({
       width,
       height,
@@ -422,8 +463,10 @@ app.whenReady().then(async () => {
   });
 
   try {
+    console.log("Loading backend modules...");
     const stateModule = await import("../src/backends/state.mjs");
     const store = stateModule.default;
+    console.log("✓ State module loaded");
 
     const uniqueCode = store.get("uniqueCode");
     const apiToken = store.get("APIToken");
@@ -433,17 +476,53 @@ app.whenReady().then(async () => {
     if (uniqueCode) store.set("uniqueCode", uniqueCode);
     if (apiToken) store.set("APIToken", apiToken);
 
+    console.log("Loading splash backend...");
     await import("../src/backends/splash.mjs");
+    console.log("✓ Splash backend loaded");
+    
+    // Determine update repo based on environment config (after splash loads environment)
+    try {
+      const envModule = await import("../src/config/environment.mjs");
+      const envConfig = envModule.config;
+      isDevBuild = !app.isPackaged || envConfig.isDevelopment;
+      UPDATE_REPO = isDevBuild ? 'TimerDisplay-Updates-Dev' : 'TimerDisplay-Updates';
+      console.log(`UPDATER: Environment is ${envConfig.environment}, detected ${isDevBuild ? 'DEVELOPMENT' : 'PRODUCTION'} build, will check repo: ${UPDATE_REPO}`);
+      
+      // Set the feed URL dynamically based on build type
+      autoUpdater.setFeedURL({
+        provider: 'github',
+        owner: 'ClueMaster-LLC',
+        repo: UPDATE_REPO,
+        releaseType: 'release'
+      });
+    } catch (error) {
+      console.error("Failed to load environment config for updater:", error);
+    }
+    
+    console.log("Loading workers module...");
     workersModule = await import("../src/workers/workers.mjs");
+    console.log("✓ Workers module loaded");
 
     setTimeout(async () => {
-      await import("../src/backends/authentication.mjs");
-      await import("../src/backends/loading.mjs");
-      await import("../src/backends/idle.mjs");
-      await import("../src/backends/game.mjs");
+      try {
+        console.log("Loading additional backends...");
+        await import("../src/backends/authentication.mjs");
+        console.log("✓ Authentication backend loaded");
+        await import("../src/backends/loading.mjs");
+        console.log("✓ Loading backend loaded");
+        await import("../src/backends/idle.mjs");
+        console.log("✓ Idle backend loaded");
+        await import("../src/backends/game.mjs");
+        console.log("✓ Game backend loaded");
+        console.log("All backend modules loaded successfully");
+      } catch (error) {
+        console.error("Failed to load additional backends:", error);
+        console.error("Error stack:", error.stack);
+      }
     }, 500);
   } catch (error) {
     console.error("Failed to load backend:", error);
+    console.error("Error stack:", error.stack);
   }
 
   // remove default menu bar completely
@@ -802,6 +881,16 @@ app.whenReady().then(async () => {
     return !!process.env.SNAP;
   };
 
+  // IPC handler to get the update repo name
+  ipcMain.handle("app-get-update-repo", async () => {
+    return UPDATE_REPO;
+  });
+
+  // IPC handler to get the product name
+  ipcMain.handle("app-get-product-name", async () => {
+    return app.getName();
+  });
+
   // Updater: handle update checks from renderer (preload exposes UpdaterBackend)
   ipcMain.handle("app-check-for-updates", async (_event, opts) => {
     const send = (type, data) => {
@@ -909,7 +998,7 @@ app.whenReady().then(async () => {
       // Normal packaged behavior
       autoUpdater.autoDownload = true;
       console.log("UPDATER: app version", app.getVersion());
-      console.log("UPDATER: starting update check using embedded publish config (repo: TimerDisplay-Updates)");
+      console.log(`UPDATER: starting update check for ${isDevBuild ? 'DEV' : 'PROD'} build (repo: ${UPDATE_REPO})`);
 
       // If a GitHub token is provided, add it to request headers (may help with organization rate limits)
       const ghToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
@@ -921,7 +1010,7 @@ app.whenReady().then(async () => {
       // Manual GitHub latest release diagnostic fetch (bypasses electron-updater logic)
       let apiVersionInfo = null;
       try {
-        const resp = await fetch("https://api.github.com/repos/ClueMaster-LLC/TimerDisplay-Updates/releases/latest", {
+        const resp = await fetch(`https://api.github.com/repos/ClueMaster-LLC/${UPDATE_REPO}/releases/latest`, {
           headers: {
             Accept: "application/vnd.github+json",
             "Cache-Control": "no-cache"
@@ -947,7 +1036,7 @@ app.whenReady().then(async () => {
 
       // Extra diagnostic: list all releases to confirm ordering and presence of latest tag
       try {
-        const releasesResp = await fetch("https://api.github.com/repos/ClueMaster-LLC/TimerDisplay-Updates/releases", { headers: { Accept: "application/vnd.github+json", "Cache-Control": "no-cache" } });
+        const releasesResp = await fetch(`https://api.github.com/repos/ClueMaster-LLC/${UPDATE_REPO}/releases`, { headers: { Accept: "application/vnd.github+json", "Cache-Control": "no-cache" } });
         if (releasesResp.ok) {
           const releases = await releasesResp.json();
           const tags = releases.map(r => r.tag_name).join(", ");
@@ -1042,6 +1131,22 @@ app.whenReady().then(async () => {
     }, 8000);
   }
 
+  // Background update check - once per day for long-running apps
+  if (app.isPackaged) {
+    const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    
+    backgroundUpdateInterval = setInterval(async () => {
+      try {
+        console.log("UPDATER: Running daily background update check...");
+        await autoUpdater.checkForUpdates();
+      } catch (err) {
+        console.log("UPDATER: Background check error:", err);
+      }
+    }, CHECK_INTERVAL);
+    
+    console.log("UPDATER: Daily background update check scheduled (every 24 hours)");
+  }
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -1049,11 +1154,32 @@ app.whenReady().then(async () => {
 
 
 app.on("before-quit", async (e) => {
+  // Clear background update interval first
+  if (backgroundUpdateInterval) {
+    clearInterval(backgroundUpdateInterval);
+    backgroundUpdateInterval = null;
+    console.log("UPDATER: Cleared background update interval");
+  }
+  
   if (workersModule) {
     e.preventDefault();
+    console.log("Stopping workers...");
     await workersModule.stopAllWorkers();
     workersModule = null;
-    app.quit();
+    console.log("Workers stopped, closing window...");
+    
+    // Destroy the window to free up resources
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.destroy();
+    }
+    
+    // Remove all IPC handlers
+    console.log("Removing IPC handlers...");
+    ipcMain.removeAllListeners();
+    
+    console.log("Forcing process exit...");
+    // Force immediate exit - bypasses event loop cleanup
+    process.exit(0);
   }
 });
 

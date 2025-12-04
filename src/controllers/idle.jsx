@@ -5,6 +5,7 @@ import VideoPlayer from "./video-player";
 export default function Idle() {
   const roomConfig = useStoreValue("roomConfig");
   const [mediaData, setMediaData] = useState(null);
+  const [productName, setProductName] = useState("ClueMaster Timer Display");
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -25,6 +26,19 @@ export default function Idle() {
         console.error("Idle: Error stopping workers:", error);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const fetchProductName = async () => {
+      try {
+        const name = await window.SplashBackend.getProductName();
+        setProductName(name);
+      } catch (error) {
+        console.error("Idle: Error fetching product name:", error);
+      }
+    };
+
+    fetchProductName();
   }, []);
 
   useEffect(() => {
@@ -85,7 +99,7 @@ export default function Idle() {
   return (
     <div className="idle-screen h-screen w-screen bg-gray-900 flex items-center justify-center">
       <div className="text-center p-8 text-white">
-        <h2 className="text-4xl font-bold mb-4">Cluemaster Timer</h2>
+        <h2 className="text-4xl font-bold mb-4">{productName}</h2>
         <p className="text-xl opacity-75">Idle Mode. Start a game.</p>
       </div>
     </div>

@@ -29,9 +29,10 @@
 .DS_Store
 Thumbs.db
 
-# Environment variables
+# Environment variables (keep .env.development and .env.production in git)
 .env
 .env.local
+.env.*.local
 
 # Logs
 logs/
