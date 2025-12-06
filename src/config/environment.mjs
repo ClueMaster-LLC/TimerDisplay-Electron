@@ -5,10 +5,10 @@
 // These values are replaced at build time by the build script
 // DO NOT commit actual values - these should always be empty strings in source control
 const BUILD_TIME_CONFIG = {
-  VITE_API_BASE_URL: 'https://deviceapi.cluemaster.io',
-  VITE_ENVIRONMENT: 'production',
-  VITE_APP_VERSION: 'prod',
-  VITE_PRODUCT_NAME: 'ClueMaster-Timer-Display'
+  VITE_API_BASE_URL: 'https://dev-deviceapi.cluemaster.io',
+  VITE_ENVIRONMENT: 'development',
+  VITE_APP_VERSION: 'dev',
+  VITE_PRODUCT_NAME: 'ClueMaster-Timer-Display-DEV'
 };
 
 // Check if we have build-time config (packaged app) or runtime config (dev/renderer)
