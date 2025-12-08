@@ -43,6 +43,7 @@ console.log(`   VITE_API_BASE_URL: ${env.VITE_API_BASE_URL}`);
 console.log(`   VITE_ENVIRONMENT: ${env.VITE_ENVIRONMENT}`);
 console.log(`   VITE_APP_VERSION: ${env.VITE_APP_VERSION}`);
 console.log(`   VITE_PRODUCT_NAME: ${env.VITE_PRODUCT_NAME}`);
+console.log(`   VITE_APP_ID: ${env.VITE_APP_ID}`);
 
 // Read the environment.mjs file
 let envFileContent = fs.readFileSync(targetFile, 'utf8');
@@ -53,6 +54,7 @@ envFileContent = envFileContent.replace(/VITE_API_BASE_URL:\s*'[^']*'/g, `VITE_A
 envFileContent = envFileContent.replace(/VITE_ENVIRONMENT:\s*'[^']*'/g, `VITE_ENVIRONMENT: '${env.VITE_ENVIRONMENT || ''}'`);
 envFileContent = envFileContent.replace(/VITE_APP_VERSION:\s*'[^']*'/g, `VITE_APP_VERSION: '${env.VITE_APP_VERSION || ''}'`);
 envFileContent = envFileContent.replace(/VITE_PRODUCT_NAME:\s*'[^']*'/g, `VITE_PRODUCT_NAME: '${env.VITE_PRODUCT_NAME || ''}'`);
+envFileContent = envFileContent.replace(/VITE_APP_ID:\s*'[^']*'/g, `VITE_APP_ID: '${env.VITE_APP_ID || ''}'`);
 
 // Write back
 fs.writeFileSync(targetFile, envFileContent, 'utf8');

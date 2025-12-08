@@ -5,6 +5,7 @@ import { ipcMain } from "electron";
 // Import drivelist safely - handle if it's not available
 let drivelist = null;
 import store from "../backends/state.mjs";
+import { config as envConfig } from '../config/environment.mjs';
 
 const SUPPORTED_MEDIA_EXTENSIONS = [
   ".mp4",
@@ -22,7 +23,7 @@ const SUPPORTED_MEDIA_EXTENSIONS = [
 ];
 
 const homeDirectory = os.homedir();
-const masterDirectory = path.join(homeDirectory, "cluemaster-timer");
+const masterDirectory = path.join(homeDirectory, envConfig.productName);
 const applicationData = path.join(masterDirectory, "application-data");
 const BASE_MEDIA_DIRECTORY = path.join(applicationData, "media-files");
 

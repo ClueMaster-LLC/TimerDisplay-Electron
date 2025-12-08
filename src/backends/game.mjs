@@ -10,9 +10,10 @@ import path from "path";
 import fs from "fs";
 import axios from "axios";
 import os from "os";
+import { config as envConfig } from '../config/environment.mjs';
 
 const homeDirectory = os.homedir();
-const masterDirectory = path.join(homeDirectory, "cluemaster-timer");
+const masterDirectory = path.join(homeDirectory, envConfig.productName);
 const applicationData = path.join(masterDirectory, "application-data");
 const BASE_MEDIA_DIRECTORY = path.join(applicationData, "media-files");
 
@@ -103,7 +104,7 @@ const getMainVideo = () => {
     );
     const videoFilesDirectory = path.join(
       roomMediaFilesDirectory,
-      "video-files"
+      "gameBackground-media"
     );
 
     if (!fs.existsSync(videoFilesDirectory)) {

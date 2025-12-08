@@ -3,9 +3,10 @@ import store from "./state.mjs";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import { config as envConfig } from '../config/environment.mjs';
 
 const homeDirectory = os.homedir();
-const masterDirectory = path.join(homeDirectory, "cluemaster-timer");
+const masterDirectory = path.join(homeDirectory, envConfig.productName);
 const applicationData = path.join(masterDirectory, "application-data");
 const BASE_MEDIA_DIRECTORY = path.join(applicationData, "media-files");
 
@@ -17,7 +18,7 @@ const getIdleMedia = () => {
     );
     const imageFilesDirectory = path.join(
       roomMediaFilesDirectory,
-      "image-files"
+      "idleScreen-media"
     );
     if (!fs.existsSync(imageFilesDirectory)) {
       return null;

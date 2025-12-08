@@ -43,7 +43,11 @@ export default function Idle() {
 
   useEffect(() => {
     const loadIdleMedia = async () => {
-      if (!roomConfig?.isImage && !roomConfig?.isVideo) {
+      // NOTE: isImage maps to API's "IsPhoto" field, which controls whether to show idle background media (photo OR video)
+      // The API naming is legacy - it now supports both photos and videos, not just photos
+      // Future API update will rename "IsPhoto" to "isIdleMedia" for clarity
+      // Only show idle background media if isImage is true
+      if (!roomConfig?.isImage) {
         setMediaData(null);
         return;
       }
@@ -58,7 +62,7 @@ export default function Idle() {
     };
 
     loadIdleMedia();
-  }, [roomConfig?.isImage, roomConfig?.isVideo]);
+  }, [roomConfig?.isImage]);
 
   useEffect(() => {
     return () => {

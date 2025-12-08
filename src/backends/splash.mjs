@@ -24,17 +24,22 @@ const packagePath = app.isPackaged
 const _package  = require(packagePath)
 
 const homeDirectory = os.homedir()
-const masterDirectory = path.join(homeDirectory, "cluemaster-timer")
+const masterDirectory = path.join(homeDirectory, config.productName)
 const applicationData = path.join(masterDirectory, "application-data")
 const configsData = path.join(masterDirectory, "device-configs")
+const mediaFilesDirectory = path.join(applicationData, "media-files")
+const roomMediaFilesDirectory = path.join(mediaFilesDirectory, "room-media-files")
+const clueMediaFilesDirectory = path.join(mediaFilesDirectory, "clue-media-files")
 const uniqueCode = path.join(configsData, "unique-code.json")
 
 ipcMain.handle("splash:worker", async() => {
-    if (fs.existsSync(masterDirectory)){} else { 
-        await fs.promises.mkdir(masterDirectory, {recursive: true})
-        await fs.promises.mkdir(applicationData, {recursive: true})
-        await fs.promises.mkdir(configsData, {recursive: true}) 
-    }
+    // Ensure all required directories exist on startup
+    await fs.promises.mkdir(masterDirectory, {recursive: true})
+    await fs.promises.mkdir(applicationData, {recursive: true})
+    await fs.promises.mkdir(configsData, {recursive: true})
+    await fs.promises.mkdir(mediaFilesDirectory, {recursive: true})
+    await fs.promises.mkdir(roomMediaFilesDirectory, {recursive: true})
+    await fs.promises.mkdir(clueMediaFilesDirectory, {recursive: true})
     if (fs.existsSync(uniqueCode)){
         const rawUniqueCodeFile = await fs.promises.readFile(uniqueCode, 'utf-8')
         const rawUniqueCodeFileData = JSON.parse(rawUniqueCodeFile)
@@ -93,6 +98,9 @@ ipcMain.handle("splash:worker", async() => {
         store.set('APIToken', newAPIToken)
         store.set('networkAddress', networkAddress)
 
+        // Ensure directory exists before writing file
+        await fs.promises.mkdir(configsData, {recursive: true})
+        
         // writing new configs to uniqueCode.json
         await fs.promises.writeFile(uniqueCode, JSON.stringify(configsObject, null, 2), 'utf-8')
         console.log("Splash: New configs : ", configsObject)

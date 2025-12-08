@@ -12,11 +12,12 @@ import axios from "axios";
 import os from "os";
 
 import { createRequire } from "module";
+import { config as envConfig } from '../config/environment.mjs';
 const require = createRequire(import.meta.url);
 const _package = require("../../package.json");
 
 const homeDirectory = os.homedir();
-const masterDirectory = path.join(homeDirectory, "cluemaster-timer");
+const masterDirectory = path.join(homeDirectory, envConfig.productName);
 const applicationData = path.join(masterDirectory, "application-data");
 const configsDirectory = path.join(masterDirectory, "device-configs");
 
@@ -76,11 +77,11 @@ ipcMain.handle("loading:worker", async () => {
         );
         const imageFilesDirectory = path.join(
           roomMediaFilesDirectory,
-          "image-files"
+          "idleScreen-media"
         );
         const videoFilesDirectory = path.join(
           roomMediaFilesDirectory,
-          "video-files"
+          "gameBackground-media"
         );
         const introMediaDirectory = path.join(
           roomMediaFilesDirectory,

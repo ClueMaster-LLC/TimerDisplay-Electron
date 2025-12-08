@@ -151,7 +151,7 @@ export default function CluePlayer({ mainPlayerRef }) {
       ttsCancelledRef.current = false;
 
       // If it's a text clue AND clueTTS is enabled (or undefined/null as fallback), start synthesizing immediately (parallel with alert)
-      if (clueState.type === "text" && clueState.src && clueState.clueTTS !== false) {
+      if (clueState.type === "text" && clueState.src && clueState.clueTTS === true) {
         const text = clueState.src;
         const textLength = text.trim().length;
         let audioPath = null;

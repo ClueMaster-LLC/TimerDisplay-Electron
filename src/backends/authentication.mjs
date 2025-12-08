@@ -6,9 +6,10 @@ import path from 'path'
 import fs from 'fs'
 import axios from 'axios';
 import os from 'os';
+import { config as envConfig } from '../config/environment.mjs';
 
 const homeDirectory = os.homedir()
-const masterDirectory = path.join(homeDirectory, "cluemaster-timer")
+const masterDirectory = path.join(homeDirectory, envConfig.productName)
 const applicationData = path.join(masterDirectory, "application-data")
 const configsDirectory = path.join(masterDirectory, "device-configs")
 
@@ -108,8 +109,8 @@ ipcMain.handle('auth:worker', async () => {
           if (roomInfoAPIRequest.data !== 'No Configurations Files Found'){
             const roomMediaFilesDirectory = path.join(applicationData, 'media-files', 'room-media-files')
             const musicFilesDirectory = path.join(roomMediaFilesDirectory, 'music-files')
-            const imageFilesDirectory = path.join(roomMediaFilesDirectory, 'image-files')
-            const videoFilesDirectory = path.join(roomMediaFilesDirectory, 'video-files')
+            const imageFilesDirectory = path.join(roomMediaFilesDirectory, 'idleScreen-media')
+            const videoFilesDirectory = path.join(roomMediaFilesDirectory, 'gameBackground-media')
             const introMediaDirectory = path.join(roomMediaFilesDirectory, 'intro-media')
             const successMediaDirectory = path.join(roomMediaFilesDirectory, 'success-media')
             const failMediaDirectory = path.join(roomMediaFilesDirectory, 'fail-media')

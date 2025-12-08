@@ -27,8 +27,13 @@ autoUpdater.disableWebInstaller = true; // Not using web installer
 let UPDATE_REPO = 'TimerDisplay-Updates'; // Default to production
 let isDevBuild = !app.isPackaged; // Default: dev mode if not packaged
 
+// Import config to get app-specific directory names
+import { config as envConfig } from '../src/config/environment.mjs';
+
 const homeDirectory = os.homedir();
-const masterDirectory = path.join(homeDirectory, "cluemaster-timer");
+// Use product name to create unique directory for each build (dev/prod)
+const appDirName = envConfig.productName; // ClueMaster-Timer-Display-DEV or ClueMaster-Timer-Display
+const masterDirectory = path.join(homeDirectory, appDirName);
 const applicationData = path.join(masterDirectory, "application-data");
 const BASE_MEDIA_DIRECTORY = path.join(applicationData, "media-files");
 const TTS_CACHE_DIRECTORY = path.join(masterDirectory, "tts-cache");
