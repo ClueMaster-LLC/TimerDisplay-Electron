@@ -155,7 +155,7 @@ ipcMain.handle("loading:worker", async () => {
           const fileName = imageMediaFile.split("/")[5].split("?X")[0];
           const file = path.join(imageFilesDirectory, fileName);
           if (fs.existsSync(file)) {
-            console.log("Loading: Image file already exists");
+            console.log("Loading: Idle Screen Media file already exists");
             const allFiles = fs.readdirSync(imageFilesDirectory);
             for (const file of allFiles) {
               if (file !== fileName) {
@@ -184,7 +184,7 @@ ipcMain.handle("loading:worker", async () => {
           const fileName = videoMediaFile.split("/")[5].split("?X")[0];
           const file = path.join(videoFilesDirectory, fileName);
           if (fs.existsSync(file)) {
-            console.log("Loading: Video file already exists");
+            console.log("Loading: Game background media file already exists");
             const allFiles = fs.readdirSync(videoFilesDirectory);
             for (const file of allFiles) {
               if (file !== fileName) {
