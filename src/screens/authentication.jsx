@@ -69,8 +69,10 @@ export default function Authentication() {
       <StartupMessage mode="other" />
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#191F26] text-white">
         <h1 className="text-4xl font-medium mb-16">{productName}</h1>
+        <br />
       <h2 className="text-2xl mb-4">DEVICE KEY</h2>
       <p className="text-4xl font-bold text-[#4e71cf]">{deviceCode}</p>
+      <br />
       <p className="mt-10 text-xl">{status}</p>
       <p className="mt-6 text-xl text-gray-300">Local IP: {localIP}</p>
       {progressMax > 0 && (

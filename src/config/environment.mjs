@@ -52,7 +52,7 @@ export const config = {
   apiBaseUrl: env.VITE_API_BASE_URL,
   environment: env.VITE_ENVIRONMENT || 'unknown',
   appVersion: env.VITE_APP_VERSION || 'unknown',
-  productName: env.VITE_PRODUCT_NAME || 'ClueMaster Timer Display',
+  productName: env.VITE_PRODUCT_NAME, // Required - no fallback to ensure proper app naming
   appId: env.VITE_APP_ID, // Required - no fallback to ensure proper directory separation
   isDevelopment: env.VITE_ENVIRONMENT === 'development',
   isProduction: env.VITE_ENVIRONMENT === 'production',

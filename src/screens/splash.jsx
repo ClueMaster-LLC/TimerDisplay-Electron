@@ -202,6 +202,7 @@ export default function Splash() {
       <StartupMessage mode="splash" />
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-900 text-white">
         <h1 className="text-4xl font-medium mb-8">{productName}</h1>
+        <br />
       <p className="text-xl mb-2">Version: {version}</p>
       {updateRepo && <p className="text-sm mb-1 text-gray-500">Update Repo: {updateRepo}</p>}
       {latestVersion && <p className="text-lg mb-2 text-gray-500">Latest: {latestVersion}</p>}

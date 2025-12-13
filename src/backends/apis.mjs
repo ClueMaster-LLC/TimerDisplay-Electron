@@ -3,7 +3,7 @@ import config from '../config/environment.mjs';
 // Use environment-specific API base URL
 // Development: https://dev-deviceapi.cluemaster.io
 // Production: https://deviceapi.cluemaster.io (or your prod URL)
-const baseAPI = config.apiBaseUrl || "https://dev-deviceapi.cluemaster.io";
+const baseAPI = config.apiBaseUrl;
 
 console.log(`API Backend initialized with: ${baseAPI} (${config.environment} mode)`);
 

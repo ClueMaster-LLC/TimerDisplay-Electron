@@ -7,6 +7,8 @@
 
 # Electron build artifacts
 /dist/
+/dist-dev/
+/dist-prod/
 /out/
 /release/
 /build/
