@@ -64,6 +64,7 @@ Dev and prod builds publish to **separate repositories** for clean separation:
 - **Repository:** `ClueMaster-LLC/TimerDisplay-Updates-Dev`
 - **Filename:** `ClueMaster-Timer-Display-DEV-Setup.exe`
 - **App ID:** `com.cluemaster.timer.dev`
+- **Build Output:** `dist-dev/`
 - **Install Location:** `%LOCALAPPDATA%\Programs\ClueMaster-Timer-Display-DEV\`
 - **Windows Startup:** Disabled by default (user can enable)
 - **Window Mode:** Starts in windowed mode (like npm run dev)
@@ -73,6 +74,7 @@ Dev and prod builds publish to **separate repositories** for clean separation:
 - **Repository:** `ClueMaster-LLC/TimerDisplay-Updates`
 - **Filename:** `ClueMaster-Timer-Display-Setup.exe`
 - **App ID:** `com.cluemaster.timer.prod`
+- **Build Output:** `dist-prod/`
 - **Install Location:** `%LOCALAPPDATA%\Programs\ClueMaster-Timer-Display\`
 - **Windows Startup:** Enabled by default (auto-start on boot)
 - **Window Mode:** Starts in fullscreen kiosk mode
@@ -80,9 +82,11 @@ Dev and prod builds publish to **separate repositories** for clean separation:
 
 **Important Notes:**
 - DEV and PROD builds can be installed side-by-side (different app IDs)
+- Build outputs are separated: `dist-dev/` for dev, `dist-prod/` for prod (both gitignored)
 - Installation is per-user (`perMachine: false`) to enable differential updates
 - Keep last 2-3 releases in GitHub for differential update support
 - Differential updates only work when both old and new versions exist on GitHub
+- Installer no longer cleans up legacy "ClueMaster-Timer" registry entries (removed as of v2025.12.13)
 
 ## Testing Locally
 

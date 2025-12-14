@@ -1,8 +1,4 @@
 !macro customInstall
-  ; Clean up any old hardcoded entries from per-machine installs
-  DeleteRegValue HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "ClueMaster-Timer"
-  DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "ClueMaster-Timer"
-  
   ; Add to startup registry (will appear in Windows Startup settings)
   WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "${PRODUCT_NAME}" "$INSTDIR\${PRODUCT_FILENAME}.exe"
   
@@ -14,8 +10,6 @@
 !macroend
 
 !macro customUnInstall
-  ; Remove the current product name entry and old hardcoded entries
-  DeleteRegValue HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "ClueMaster-Timer"
-  DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "ClueMaster-Timer"
+  ; Remove the current product name entry
   DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "${PRODUCT_NAME}"
 !macroend
