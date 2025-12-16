@@ -30,7 +30,7 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.10.1",
-    "systeminformation": "^5.27.13",
+    "systeminformation": "^5.27.14",
     "ws": "^8.18.3",
     "zustand": "^5.0.9"
   },
