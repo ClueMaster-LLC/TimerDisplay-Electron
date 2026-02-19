@@ -281,7 +281,7 @@ if [ -z "$ELECTRON_APP" ]; then
     exit 1
 fi
 
-ELECTRON_BIN="$ELECTRON_APP/cluemaster-timerdisplay"
+ELECTRON_BIN="$ELECTRON_APP/cluemaster-timer"
 
 if [ ! -f "$ELECTRON_BIN" ]; then
     # Try alternate name patterns

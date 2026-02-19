@@ -326,7 +326,8 @@ parts:
         --output=release-build --prune=true
       
       # Copy packaged app to install directory
-      cp -av ./cluemaster-timer-linux-* ${CRAFT_PART_INSTALL}/electron-app
+      mkdir -p ${CRAFT_PART_INSTALL}/electron-app
+      cp -av ./cluemaster-timer-linux-* ${CRAFT_PART_INSTALL}/electron-app/
   
   wrapper:
     plugin: dump
