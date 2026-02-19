@@ -265,42 +265,108 @@ done
 export ALSA_CONFIG_PATH="$ASOUNDRC"
 
 # ─── Wayland / Display ────────────────────────────────────────────────────────
-# Set XDG_RUNTIME_DIR if not already set (snapd env doesn't support ${VAR:-default})
-if [ -z "$XDG_RUNTIME_DIR" ]; then
-    # Daemon runs as root (uid 0) on Ubuntu Core
-    if [ -d "/run/user/0" ]; then
-        export XDG_RUNTIME_DIR="/run/user/0"
-    else
-        # Create it if it doesn't exist
-        mkdir -p /run/user/0
-        chmod 700 /run/user/0
-        export XDG_RUNTIME_DIR="/run/user/0"
-    fi
-fi
+# snapd remaps XDG_RUNTIME_DIR for confined snaps (e.g. /run/user/0/snap.<snapname>)
+# The wayland plug, when connected, bind-mounts the compositor socket into this dir.
+# We trust whatever snapd sets for XDG_RUNTIME_DIR - don't override it.
 
-# Set WAYLAND_DISPLAY if not already set
+echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+echo "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>}"
+
+# Set WAYLAND_DISPLAY default if not set
 if [ -z "$WAYLAND_DISPLAY" ]; then
     export WAYLAND_DISPLAY="wayland-0"
 fi
 
-echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
-echo "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+# ─── Search for Wayland socket ────────────────────────────────────────────────
+# The socket could be in several locations depending on how ubuntu-frame
+# and snapd expose it. Search common paths.
+find_wayland_socket() {
+    # 1. Standard location: $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY
+    if [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
+        echo "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+        return 0
+    fi
+    
+    # 2. Search for any wayland socket in XDG_RUNTIME_DIR
+    if [ -n "$XDG_RUNTIME_DIR" ] && [ -d "$XDG_RUNTIME_DIR" ]; then
+        local found
+        found=$(find "$XDG_RUNTIME_DIR" -maxdepth 1 -name "wayland-*" -type s 2>/dev/null | head -n 1)
+        if [ -n "$found" ]; then
+            echo "$found"
+            return 0
+        fi
+    fi
+    
+    # 3. Check /run/user/0 directly (non-snap-remapped path)
+    if [ -S "/run/user/0/$WAYLAND_DISPLAY" ]; then
+        echo "/run/user/0/$WAYLAND_DISPLAY"
+        return 0
+    fi
+    
+    # 4. Search /run/user/0 for any wayland socket
+    if [ -d "/run/user/0" ]; then
+        local found
+        found=$(find /run/user/0 -maxdepth 2 -name "wayland-*" -type s 2>/dev/null | head -n 1)
+        if [ -n "$found" ]; then
+            echo "$found"
+            return 0
+        fi
+    fi
+    
+    return 1
+}
 
-# Wait for ubuntu-frame Wayland socket to be ready (up to 30s)
-WAYLAND_SOCKET="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
-echo "Waiting for Wayland socket: $WAYLAND_SOCKET"
+echo "Searching for Wayland socket..."
+echo "Contents of XDG_RUNTIME_DIR ($XDG_RUNTIME_DIR):"
+ls -la "$XDG_RUNTIME_DIR/" 2>/dev/null || echo "  (directory not found or not accessible)"
+echo "Contents of /run/user/0/:"
+ls -la /run/user/0/ 2>/dev/null || echo "  (directory not found or not accessible)"
+
+# Wait for Wayland socket to appear (up to 60s - ubuntu-frame may take time)
 WAIT_COUNT=0
-while [ ! -S "$WAYLAND_SOCKET" ] && [ $WAIT_COUNT -lt 30 ]; do
+WAYLAND_SOCKET=""
+while [ $WAIT_COUNT -lt 60 ]; do
+    WAYLAND_SOCKET=$(find_wayland_socket)
+    if [ -n "$WAYLAND_SOCKET" ]; then
+        break
+    fi
     sleep 1
     WAIT_COUNT=$((WAIT_COUNT + 1))
-    echo "Waiting for Wayland compositor... ($WAIT_COUNT/30)"
+    # Print diagnostics every 10 seconds
+    if [ $((WAIT_COUNT % 10)) -eq 0 ]; then
+        echo "Waiting for Wayland compositor... ($WAIT_COUNT/60)"
+        echo "  XDG_RUNTIME_DIR contents:"
+        ls -la "$XDG_RUNTIME_DIR/" 2>/dev/null || echo "    (not accessible)"
+        echo "  /run/user/0 contents:"
+        ls -la /run/user/0/ 2>/dev/null || echo "    (not accessible)"
+    fi
 done
 
-if [ -S "$WAYLAND_SOCKET" ]; then
-    echo "Wayland socket found after ${WAIT_COUNT}s"
+if [ -n "$WAYLAND_SOCKET" ]; then
+    echo "Wayland socket found at: $WAYLAND_SOCKET (after ${WAIT_COUNT}s)"
+    
+    # If the socket is not at the expected $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY,
+    # set WAYLAND_DISPLAY to the absolute path so Electron can find it
+    EXPECTED_SOCKET="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+    if [ "$WAYLAND_SOCKET" != "$EXPECTED_SOCKET" ]; then
+        echo "Socket not at expected path, setting WAYLAND_DISPLAY to absolute path"
+        export WAYLAND_DISPLAY="$WAYLAND_SOCKET"
+    fi
 else
-    echo "WARNING: Wayland socket not found after 30s, attempting to launch anyway..."
-    ls -la "$XDG_RUNTIME_DIR/" 2>/dev/null || true
+    echo "============================================================"
+    echo "ERROR: No Wayland socket found after 60 seconds!"
+    echo ""
+    echo "Checklist:"
+    echo "  1. Is ubuntu-frame installed?  snap list ubuntu-frame"
+    echo "  2. Is ubuntu-frame running?    snap services ubuntu-frame"
+    echo "  3. Is wayland interface connected?"
+    echo "     snap connect cluemaster-mediadisplay-core:wayland ubuntu-frame"
+    echo "  4. Check ubuntu-frame logs:    snap logs ubuntu-frame -n 50"
+    echo ""
+    echo "Debug info:"
+    echo "  XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+    ls -laR /run/user/ 2>/dev/null || echo "  /run/user/ not accessible"
+    echo "============================================================"
 fi
 
 # ─── Find and launch Electron app ─────────────────────────────────────────────
