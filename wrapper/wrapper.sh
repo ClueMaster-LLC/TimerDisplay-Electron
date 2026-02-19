@@ -265,11 +265,43 @@ done
 export ALSA_CONFIG_PATH="$ASOUNDRC"
 
 # ─── Wayland / Display ────────────────────────────────────────────────────────
-# Wait briefly for ubuntu-frame compositor to be ready
-sleep 2
+# Set XDG_RUNTIME_DIR if not already set (snapd env doesn't support ${VAR:-default})
+if [ -z "$XDG_RUNTIME_DIR" ]; then
+    # Daemon runs as root (uid 0) on Ubuntu Core
+    if [ -d "/run/user/0" ]; then
+        export XDG_RUNTIME_DIR="/run/user/0"
+    else
+        # Create it if it doesn't exist
+        mkdir -p /run/user/0
+        chmod 700 /run/user/0
+        export XDG_RUNTIME_DIR="/run/user/0"
+    fi
+fi
 
-echo "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+# Set WAYLAND_DISPLAY if not already set
+if [ -z "$WAYLAND_DISPLAY" ]; then
+    export WAYLAND_DISPLAY="wayland-0"
+fi
+
 echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+echo "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+
+# Wait for ubuntu-frame Wayland socket to be ready (up to 30s)
+WAYLAND_SOCKET="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+echo "Waiting for Wayland socket: $WAYLAND_SOCKET"
+WAIT_COUNT=0
+while [ ! -S "$WAYLAND_SOCKET" ] && [ $WAIT_COUNT -lt 30 ]; do
+    sleep 1
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    echo "Waiting for Wayland compositor... ($WAIT_COUNT/30)"
+done
+
+if [ -S "$WAYLAND_SOCKET" ]; then
+    echo "Wayland socket found after ${WAIT_COUNT}s"
+else
+    echo "WARNING: Wayland socket not found after 30s, attempting to launch anyway..."
+    ls -la "$XDG_RUNTIME_DIR/" 2>/dev/null || true
+fi
 
 # ─── Find and launch Electron app ─────────────────────────────────────────────
 # electron-packager output directory

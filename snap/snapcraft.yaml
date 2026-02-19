@@ -86,7 +86,7 @@ apps:
       XDG_CONFIG_HOME: "$SNAP_USER_DATA/.config"
       XDG_SESSION_TYPE: wayland
       # Daemons run as root (uid 0), not user 1000
-      XDG_RUNTIME_DIR: "${XDG_RUNTIME_DIR:-/run/user/0}"
+      # Note: XDG_RUNTIME_DIR is set by wrapper script (snapd doesn't support ${VAR:-default} syntax)
       
       # Graphics - use snapd-injected host GL drivers + bundled fallbacks
       # snapd injects host GL/VA-API drivers via opengl plug at /var/lib/snapd/lib/gl
@@ -101,7 +101,7 @@ apps:
       XKB_CONFIG_ROOT: "$SNAP/usr/share/X11/xkb"
       
       # Wayland
-      WAYLAND_DISPLAY: "${WAYLAND_DISPLAY:-wayland-0}"
+      # Note: WAYLAND_DISPLAY is set by wrapper script (snapd doesn't support ${VAR:-default} syntax)
       ELECTRON_OZONE_PLATFORM_HINT: auto
       
       # Audio - ALSA direct (Ubuntu Core uses ALSA without PulseAudio/PipeWire)
