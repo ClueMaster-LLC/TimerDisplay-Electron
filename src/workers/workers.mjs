@@ -1,8 +1,9 @@
 import { Worker } from "worker_threads";
-import { getMainWindow } from "../../electron/main.mjs";
+import { getMainWindow, isQuitting } from "../../electron/main.mjs";
 import { ipcMain } from "electron";
 import store from "../backends/state.mjs";
 import { restartDevice, shutdownDevice } from "../backends/system.mjs";
+import { captureAndUpload } from "../backends/screenshot-handler.mjs";
 
 let workers = {};
 
@@ -11,7 +12,12 @@ const createWorker = async (name, file) => {
     type: "module",
   });
 
-  worker.on("message", (message) => {
+  worker.on("message", async (message) => {
+    // Don't process messages if the app is quitting (window may be destroyed)
+    if (isQuitting()) {
+      return;
+    }
+
     // console.log(`Main: ${name} worker event:`, message);
     if (message.type === "store:get") {
       const value = store.get(message.key);
@@ -20,6 +26,20 @@ const createWorker = async (name, file) => {
       store.set(message.key, message.value);
       worker.postMessage({ id: message.id, result: true });
     } else if (message.type === "event") {
+      // Handle screenshot capture requests from the screenshot worker
+      // API-triggered screenshots are silent (no UI notification)
+      // Only manual screenshots from menu show toast via screenshot-test-result channel
+      if (message.event === "captureRequested") {
+        console.log("Workers: Screenshot capture requested by API, executing silently...");
+        try {
+          const result = await captureAndUpload();
+          console.log("Workers: Screenshot result -", result.success ? `Uploaded ${result.imageSizeKB} KB` : result.error);
+        } catch (err) {
+          console.error("Workers: Screenshot capture failed:", err.message);
+        }
+        return;
+      }
+
       const window = getMainWindow();
       if (window && !window.isDestroyed()) {
         window.webContents.send("workers:event", { worker: name, ...message });
@@ -52,6 +72,7 @@ const workerFiles = {
   gameInfo: "game-info.mjs",
   clue: "clue.mjs",
   timerRequests: "timer-requests.mjs",
+  screenshot: "screenshot.mjs",
 };
 
 const startWorkers = async (workerNames) => {

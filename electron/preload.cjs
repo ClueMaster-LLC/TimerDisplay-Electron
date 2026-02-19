@@ -50,7 +50,7 @@ contextBridge.exposeInMainWorld("AuthenticationBackend", {
 });
 
 contextBridge.exposeInMainWorld("LoadingBackend", {
-  worker: () => ipcRenderer.invoke("loading:worker"),
+  worker: (options) => ipcRenderer.invoke("loading:worker", options),
   onLoadingStatusEvent: (callback) => {
     const listener = (_event, data) => {
       callback(data);
@@ -149,4 +149,29 @@ contextBridge.exposeInMainWorld("TTSBackend", {
   getVoices: () => ipcRenderer.invoke("tts:getVoices"),
   clearCache: () => ipcRenderer.invoke("tts:clearCache"),
   checkVoiceChange: () => ipcRenderer.invoke("tts:checkVoiceChange"),
+});
+
+// App-level events (closing, screenshot test results)
+contextBridge.exposeInMainWorld("AppBackend", {
+  onClosing: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("app:closing", listener);
+    return () => ipcRenderer.removeListener("app:closing", listener);
+  },
+  onScreenshotTestResult: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on("screenshot-test-result", listener);
+    return () => ipcRenderer.removeListener("screenshot-test-result", listener);
+  },
+});
+
+// System API: platform info, video info (debug overlay), screenshots
+contextBridge.exposeInMainWorld("SystemBackend", {
+  getVideoInfo: (videoPath) => ipcRenderer.invoke("system:get-video-info", videoPath),
+  getPlatformInfo: () => ipcRenderer.invoke("system:get-platform-info"),
+  captureScreenshot: () => ipcRenderer.invoke("system:capture-screenshot"),
+  onToggleDebugOverlay: (callback) => {
+    ipcRenderer.on("debug:toggle-overlay", () => callback());
+    return () => ipcRenderer.removeAllListeners("debug:toggle-overlay");
+  },
 });

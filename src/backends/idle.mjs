@@ -5,10 +5,10 @@ import fs from "fs";
 import os from "os";
 import { config as envConfig } from '../config/environment.mjs';
 
-const homeDirectory = os.homedir();
-const masterDirectory = path.join(homeDirectory, envConfig.productName);
-const applicationData = path.join(masterDirectory, "application-data");
-const BASE_MEDIA_DIRECTORY = path.join(applicationData, "media-files");
+// Use centralized cross-platform paths from environment config
+const masterDirectory = envConfig.masterDirectory || path.join(os.homedir(), envConfig.productName);
+const applicationData = envConfig.applicationDataDirectory || path.join(masterDirectory, "application-data");
+const BASE_MEDIA_DIRECTORY = envConfig.mediaFilesDirectory || path.join(applicationData, "media-files");
 
 const getIdleMedia = () => {
   try {

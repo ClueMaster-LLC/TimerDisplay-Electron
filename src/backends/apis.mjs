@@ -30,6 +30,10 @@ const postDeviceAPI = baseAPI + "/api/Device/{device_unique_code}/{deviceRequest
 const postDeviceDetailsUpdateAPI = baseAPI + "/api/Device/PostDeviceDetailsUpdate/{device_id}/{device_ip}/{snap_version}";
 const postDeviceHeartBeatAPI = baseAPI + "/api/Device/PostDeviceHeartBeat/{device_id}/{cpu_avg}/{memory_avg}/{network_avg}"
 
+// Screenshot capture APIs
+const getScreenshotRequestAPI = baseAPI + "/api/Device/GetScreenshotRequest/{device_unique_code}";
+const postScreenshotAPI = baseAPI + "/api/Device/PostScreenshot/{device_unique_code}";
+
 export {
   baseAPI,
   generalRequestAPI,
@@ -52,5 +56,7 @@ export {
   postGameClueAPI,
   postDeviceAPI,
   postDeviceDetailsUpdateAPI,
-  postDeviceHeartBeatAPI
+  postDeviceHeartBeatAPI,
+  getScreenshotRequestAPI,
+  postScreenshotAPI
 };

@@ -22,10 +22,9 @@ const SUPPORTED_MEDIA_EXTENSIONS = [
   ".jpeg",
 ];
 
-const homeDirectory = os.homedir();
-const masterDirectory = path.join(homeDirectory, envConfig.productName);
-const applicationData = path.join(masterDirectory, "application-data");
-const BASE_MEDIA_DIRECTORY = path.join(applicationData, "media-files");
+const masterDirectory = envConfig.masterDirectory || path.join(os.homedir(), envConfig.productName);
+const applicationData = envConfig.applicationDataDirectory || path.join(masterDirectory, "application-data");
+const BASE_MEDIA_DIRECTORY = envConfig.mediaFilesDirectory || path.join(applicationData, "media-files");
 
 const getDeviceIPv4Address = async () => {
   const nets = os.networkInterfaces();
@@ -85,33 +84,67 @@ function sortByNumericPriority(files) {
 
 async function collectUsbMediaFiles() {
   try {
-    // Try to load drivelist dynamically
-    if (!drivelist) {
-      try {
-        const drivelistModule = await import("drivelist");
-        drivelist = drivelistModule.default;
-      } catch (error) {
-        console.warn(
-          "drivelist not available, skipping USB media detection:",
-          error.message
-        );
-        return [];
-      }
-    }
-
-    const drives = await drivelist.list();
     const usbRoots = [];
 
-    drives.forEach((drive) => {
-      if (
-        drive.isUSB &&
-        drive.isRemovable &&
-        !drive.isSystem &&
-        drive.mountpoints.length > 0
-      ) {
-        drive.mountpoints.forEach((mp) => usbRoots.push(path.resolve(mp.path)));
+    if (envConfig.isLinux || envConfig.isSnap) {
+      // On Linux/SNAP, USB drives mount under /media/<user>/ or removable-media paths
+      const removablePaths = envConfig.removableMediaPaths || ['/media'];
+      for (const basePath of removablePaths) {
+        if (fs.existsSync(basePath)) {
+          try {
+            const entries = fs.readdirSync(basePath, { withFileTypes: true });
+            for (const entry of entries) {
+              if (entry.isDirectory()) {
+                const mountPath = path.join(basePath, entry.name);
+                // For /media, look one level deeper (e.g., /media/<user>/<drive>)
+                if (basePath === '/media') {
+                  try {
+                    const userEntries = fs.readdirSync(mountPath, { withFileTypes: true });
+                    for (const userEntry of userEntries) {
+                      if (userEntry.isDirectory()) {
+                        usbRoots.push(path.join(mountPath, userEntry.name));
+                      }
+                    }
+                  } catch (e) {
+                    // Skip if can't read user directory
+                  }
+                } else {
+                  usbRoots.push(mountPath);
+                }
+              }
+            }
+          } catch (e) {
+            console.log(`Player: Could not read removable media path ${basePath}:`, e.message);
+          }
+        }
       }
-    });
+    } else {
+      // Windows: use drivelist to detect USB drives
+      if (!drivelist) {
+        try {
+          const drivelistModule = await import("drivelist");
+          drivelist = drivelistModule.default;
+        } catch (error) {
+          console.warn(
+            "drivelist not available, skipping USB media detection:",
+            error.message
+          );
+          return [];
+        }
+      }
+
+      const drives = await drivelist.list();
+      drives.forEach((drive) => {
+        if (
+          drive.isUSB &&
+          drive.isRemovable &&
+          !drive.isSystem &&
+          drive.mountpoints.length > 0
+        ) {
+          drive.mountpoints.forEach((mp) => usbRoots.push(path.resolve(mp.path)));
+        }
+      });
+    }
 
     let usbFiles = [];
     for (const usbRoot of usbRoots) {
@@ -122,10 +155,19 @@ async function collectUsbMediaFiles() {
     }
 
     const formattedFiles = usbFiles.map((file) => {
-      const driveRoot = path.parse(file).root;
-      const driveName = driveRoot.replace(/[:\\]/g, ""); // → "X"
-      const relativePath = path.relative(driveRoot, file);
-      return `media://external/${driveName}/${relativePath}`;
+      if (envConfig.isLinux || envConfig.isSnap) {
+        // On Linux, use the mount point name as the "drive" identifier
+        // e.g., /media/user/USBDRIVE/file.mp4 → media://external/USBDRIVE/file.mp4
+        const matchedRoot = usbRoots.find((root) => file.startsWith(root));
+        const driveName = matchedRoot ? path.basename(matchedRoot) : "usb";
+        const relativePath = matchedRoot ? path.relative(matchedRoot, file) : path.basename(file);
+        return `media://external/${driveName}/${relativePath}`;
+      } else {
+        const driveRoot = path.parse(file).root;
+        const driveName = driveRoot.replace(/[:\\]/g, ""); // → "X"
+        const relativePath = path.relative(driveRoot, file);
+        return `media://external/${driveName}/${relativePath}`;
+      }
     });
 
     return sortByNumericPriority(formattedFiles);
@@ -147,8 +189,7 @@ function collectLocalMediaFiles() {
   let mediaSequence = [];
   try {
     const sequenceFilePath = path.join(
-      masterDirectory,
-      "device-configs",
+      envConfig.deviceConfigsDirectory || path.join(masterDirectory, "device-configs"),
       "media-sequences.json"
     );
     if (fs.existsSync(sequenceFilePath)) {

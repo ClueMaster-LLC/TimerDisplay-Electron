@@ -23,11 +23,11 @@ const packagePath = app.isPackaged
     : path.join(__dirname, "../../package.json");
 const _package  = require(packagePath)
 
-const homeDirectory = os.homedir()
-const masterDirectory = path.join(homeDirectory, config.productName)
-const applicationData = path.join(masterDirectory, "application-data")
-const configsData = path.join(masterDirectory, "device-configs")
-const mediaFilesDirectory = path.join(applicationData, "media-files")
+// Use centralized cross-platform paths from environment config
+const masterDirectory = config.masterDirectory || path.join(os.homedir(), config.productName)
+const applicationData = config.applicationDataDirectory || path.join(masterDirectory, "application-data")
+const configsData = config.deviceConfigsDirectory || path.join(masterDirectory, "device-configs")
+const mediaFilesDirectory = config.mediaFilesDirectory || path.join(applicationData, "media-files")
 const roomMediaFilesDirectory = path.join(mediaFilesDirectory, "room-media-files")
 const clueMediaFilesDirectory = path.join(mediaFilesDirectory, "clue-media-files")
 const uniqueCode = path.join(configsData, "unique-code.json")

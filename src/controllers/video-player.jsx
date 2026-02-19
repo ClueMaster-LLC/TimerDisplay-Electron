@@ -26,6 +26,15 @@ const VideoPlayer = forwardRef(
     const imgRef = useRef(null);
     const [isImage, setIsImage] = useState(false);
 
+    // GPU compositor layer optimization styles
+    const gpuLayerStyle = {
+      transform: 'translateZ(0)',       // Force GPU layer
+      backfaceVisibility: 'hidden',     // Prevent artifacts
+      willChange: 'opacity',            // Compositor hint
+      contain: 'layout style paint',    // CSS containment
+      ...style,
+    };
+
     useEffect(() => {
       if (!src) {
         setIsImage(false);
@@ -107,7 +116,7 @@ const VideoPlayer = forwardRef(
           src={src}
           alt="Main content"
           className={className}
-          style={style}
+          style={gpuLayerStyle}
         />
       );
     }
@@ -121,7 +130,7 @@ const VideoPlayer = forwardRef(
         muted={muted}
         controls={controls}
         className={className}
-        style={style}
+        style={gpuLayerStyle}
       />
     );
   }

@@ -31,11 +31,11 @@ let isDevBuild = !app.isPackaged; // Default: dev mode if not packaged
 import { config as envConfig } from '../src/config/environment.mjs';
 
 const homeDirectory = os.homedir();
-// Use product name to create unique directory for each build (dev/prod)
-const appDirName = envConfig.productName; // ClueMaster-Timer-Display-DEV or ClueMaster-Timer-Display
-const masterDirectory = path.join(homeDirectory, appDirName);
-const applicationData = path.join(masterDirectory, "application-data");
-const BASE_MEDIA_DIRECTORY = path.join(applicationData, "media-files");
+// Use config's cross-platform directory structure
+const appDirName = envConfig.appDirName || envConfig.productName;
+const masterDirectory = envConfig.masterDirectory || path.join(homeDirectory, appDirName);
+const applicationData = envConfig.applicationDataDirectory || path.join(masterDirectory, "application-data");
+const BASE_MEDIA_DIRECTORY = envConfig.mediaFilesDirectory || path.join(applicationData, "media-files");
 const TTS_CACHE_DIRECTORY = path.join(masterDirectory, "tts-cache");
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +45,7 @@ let _cursorHideKey = null;
 let _cursorShowKey = null;
 let workersModule = null;
 let backgroundUpdateInterval = null;
+let isAppQuitting = false; // Flag to track app shutdown state - prevents worker race conditions
 
 function nodeStreamToWeb(stream) {
   return new ReadableStream({
@@ -61,6 +62,10 @@ function nodeStreamToWeb(stream) {
 
 export function getMainWindow() {
   return mainWindow;
+}
+
+export function isQuitting() {
+  return isAppQuitting;
 }
 
 function createWindow() {
@@ -327,6 +332,44 @@ function createWindow() {
       }
     });
   }
+
+  // Stop workers before window closes to prevent "Object has been destroyed" errors
+  mainWindow.on('close', async (event) => {
+    // If we're already quitting (workers stopped), allow the close
+    if (isAppQuitting) {
+      return;
+    }
+
+    // Prevent the window from closing immediately
+    event.preventDefault();
+
+    // Set flag to prevent workers from sending messages to destroyed window
+    isAppQuitting = true;
+
+    // Notify renderer to show closing overlay
+    try {
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+        mainWindow.webContents.send('app:closing');
+        // Give the renderer a moment to show the overlay
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    } catch (err) {
+      // Ignore errors if window is already destroyed
+    }
+
+    if (workersModule) {
+      try {
+        console.log("Window closing - stopping workers...");
+        await workersModule.stopAllWorkers();
+        console.log("Workers stopped successfully");
+      } catch (err) {
+        console.error("Error stopping workers on window close:", err);
+      }
+    }
+
+    // Now actually close the window
+    mainWindow.destroy();
+  });
 }
 
 // media:// protocol for serving media files
@@ -342,13 +385,41 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-// hardware acceleration flags
+// hardware acceleration flags (cross-platform)
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
 app.commandLine.appendSwitch("enable-gpu-rasterization");
 app.commandLine.appendSwitch("enable-zero-copy");
 app.commandLine.appendSwitch("enable-native-gpu-memory-buffers");
 app.commandLine.appendSwitch("enable-accelerated-video-decode");
 app.commandLine.appendSwitch("force_high_performance_gpu");
+
+// VA-API hardware acceleration for Linux/SNAP
+if (envConfig.isLinux || envConfig.isSnap) {
+  // Force Wayland on ubuntu-frame
+  app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+
+  // Disable GPU driver bug workarounds for Intel
+  app.commandLine.appendSwitch('disable-gpu-driver-bug-workarounds');
+
+  // VA-API and HEVC support
+  app.commandLine.appendSwitch('enable-features', [
+    'VaapiVideoDecoder',
+    'VaapiVideoEncoder',
+    'VaapiVideoDecodeLinuxGL',
+    'AcceleratedVideoDecodeLinuxGL',
+    'AcceleratedVideoDecodeLinuxZeroCopyGL',
+    'VaapiIgnoreDriverChecks',
+    'PlatformHEVCDecoderSupport',
+    'WaylandWindowDecorations',
+  ].join(','));
+}
+
+// Disable D-Bus accessibility (causes errors in SNAP)
+if (envConfig.isSnap) {
+  process.env.AT_SPI2_CORE_NO_DBUS = '1';
+  // Don't set DBUS_SESSION_BUS_ADDRESS to empty string - Chromium tries to parse it
+  // The wrapper script handles unsetting it properly
+}
 
 app.whenReady().then(async () => {
   const defaultSession = session.defaultSession;
@@ -400,23 +471,45 @@ app.whenReady().then(async () => {
           return new Response("Forbidden", { status: 403 });
         }
       } else if (source === "external") {
-        const [, driveName, ...rest] = url.pathname.split("/");
+        // Handle USB drive paths cross-platform
+        if (envConfig.isWindows) {
+          // Windows: media://external/E/path/file.mp4 -> E:\path\file.mp4
+          const [, driveName, ...rest] = url.pathname.split("/");
+          const fileName = rest.join(path.sep);
+          const usbDrivePath = `${driveName}:\\`;
 
-        const fileName = rest.join(path.sep);
-        const usbDrivePath = `${driveName}:\\`;
+          if (!fs.existsSync(usbDrivePath)) {
+            console.log("USB drive not found:", driveName);
+            return new Response("USB drive not found", { status: 404 });
+          }
 
-        if (!fs.existsSync(usbDrivePath)) {
-          console.log("USB drive not found:", driveName);
-          return new Response("USB drive not found", { status: 404 });
-        }
+          filePath = path.join(usbDrivePath, fileName);
+          if (!filePath.startsWith(usbDrivePath)) {
+            console.error(
+              "Security violation: Attempted to access unauthorized path:",
+              filePath
+            );
+            return new Response("Forbidden", { status: 403 });
+          }
+        } else {
+          // Linux/SNAP: media://external/USB_LABEL/path/file.mp4
+          const [, usbLabel, ...rest] = url.pathname.split("/");
+          const restOfPath = rest.join("/");
+          let found = false;
 
-        filePath = path.join(usbDrivePath, fileName);
-        if (!filePath.startsWith(usbDrivePath)) {
-          console.error(
-            "Security violation: Attempted to access unauthorized path:",
-            filePath
-          );
-          return new Response("Forbidden", { status: 403 });
+          for (const mountBase of (envConfig.removableMediaPaths || ['/media', '/mnt'])) {
+            const candidatePath = path.join(mountBase, usbLabel, restOfPath);
+            if (fs.existsSync(candidatePath)) {
+              filePath = candidatePath;
+              found = true;
+              break;
+            }
+          }
+
+          if (!found) {
+            console.log("USB drive not found:", usbLabel);
+            return new Response("USB drive not found", { status: 404 });
+          }
         }
       } else {
         return new Response("Invalid source", { status: 400 });
@@ -530,8 +623,93 @@ app.whenReady().then(async () => {
     console.error("Error stack:", error.stack);
   }
 
-  // remove default menu bar completely
-  // Menu.setApplicationMenu(null);
+  // Build application menu - add debug tools in dev/unpackaged builds
+  const isUnpackagedDev = !app.isPackaged;
+  if (isUnpackagedDev || isDevBuild) {
+    const defaultMenu = Menu.getApplicationMenu();
+    const menuTemplate = [
+      {
+        label: 'File',
+        submenu: [
+          { role: 'quit' }
+        ]
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' }
+        ]
+      },
+      {
+        label: 'View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' }
+        ]
+      },
+      {
+        label: 'Debug Options',
+        submenu: [
+          {
+            label: 'Toggle Debug Overlay',
+            accelerator: 'CmdOrCtrl+Shift+D',
+            click: () => {
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('debug:toggle-overlay');
+              }
+            }
+          },
+          {
+            label: 'Test Screenshot Capture',
+            accelerator: 'CmdOrCtrl+Shift+S',
+            click: async () => {
+              try {
+                console.log('Screenshot Test: Capturing...');
+                const { captureAndUpload } = await import("../src/backends/screenshot-handler.mjs");
+                const result = await captureAndUpload();
+                console.log('Screenshot Test: Result -', result);
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('screenshot-test-result', result);
+                }
+              } catch (err) {
+                console.error('Screenshot Test: Failed -', err.message);
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('screenshot-test-result', {
+                    success: false,
+                    error: err.message,
+                  });
+                }
+              }
+            }
+          },
+        ]
+      },
+      {
+        label: 'Window',
+        submenu: [
+          { role: 'minimize' },
+          { role: 'close' }
+        ]
+      }
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
+  } else {
+    // Production: remove menu bar
+    Menu.setApplicationMenu(null);
+  }
 
   createWindow();
 
@@ -886,6 +1064,75 @@ app.whenReady().then(async () => {
     return !!process.env.SNAP;
   };
 
+  // ─── System/Debug IPC handlers ─────────────────────────────────────────────
+  // getVideoInfo via ffprobe (used by debug overlay)
+  ipcMain.handle("system:get-video-info", async (_event, mediaPath) => {
+    try {
+      // Resolve media:// protocol paths to actual file paths
+      let filePath = mediaPath;
+      if (mediaPath && mediaPath.startsWith('media://')) {
+        const url = new URL(mediaPath);
+        const type = url.host; // 'local', 'external', or 'tts-cache'
+        const restPath = decodeURIComponent(url.pathname).slice(1); // remove leading '/'
+
+        if (type === 'local') {
+          filePath = path.resolve(BASE_MEDIA_DIRECTORY, restPath);
+        } else if (type === 'tts-cache') {
+          filePath = path.resolve(TTS_CACHE_DIRECTORY, restPath);
+        } else if (type === 'external') {
+          const [driveName, ...rest] = restPath.split('/');
+          if (envConfig.isWindows) {
+            filePath = `${driveName}:\\${rest.join(path.sep)}`;
+          } else {
+            // Linux: try removable media mount points
+            const mountBases = envConfig.removableMediaPaths || ['/media', '/mnt'];
+            for (const mountBase of mountBases) {
+              const candidate = path.join(mountBase, driveName, rest.join('/'));
+              if (fs.existsSync(candidate)) {
+                filePath = candidate;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      console.log(`Getting video info for: ${filePath}`);
+      const { getVideoInfo } = await import("../src/backends/transcoder.mjs");
+      const info = await getVideoInfo(filePath);
+      return info;
+    } catch (error) {
+      console.error("System: getVideoInfo error:", error);
+      return { error: error.message, filename: path.basename(mediaPath || 'unknown') };
+    }
+  });
+
+  // Get platform info (used by debug overlay & diagnostics)
+  ipcMain.handle("system:get-platform-info", async () => {
+    return {
+      platform: os.platform(),
+      arch: os.arch(),
+      isSnap: envConfig.isSnap,
+      isLinux: envConfig.isLinux,
+      isWindows: envConfig.isWindows,
+      isUbuntuCore: envConfig.isUbuntuCore,
+      nodeVersion: process.version,
+      electronVersion: process.versions.electron,
+      chromeVersion: process.versions.chrome,
+    };
+  });
+
+  // Screenshot capture (can also be triggered from renderer)
+  ipcMain.handle("system:capture-screenshot", async () => {
+    try {
+      const { captureAndUpload } = await import("../src/backends/screenshot-handler.mjs");
+      return await captureAndUpload();
+    } catch (error) {
+      console.error("System: screenshot capture error:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // IPC handler to get the update repo name
   ipcMain.handle("app-get-update-repo", async () => {
     return UPDATE_REPO;
@@ -1137,7 +1384,8 @@ app.whenReady().then(async () => {
   }
 
   // Background update check - once per day for long-running apps
-  if (app.isPackaged) {
+  // Only use electron-updater for background checks on Windows (SNAP uses snap refresh)
+  if (app.isPackaged && !isUbuntuCoreSnap()) {
     const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     
     backgroundUpdateInterval = setInterval(async () => {
@@ -1150,6 +1398,8 @@ app.whenReady().then(async () => {
     }, CHECK_INTERVAL);
     
     console.log("UPDATER: Daily background update check scheduled (every 24 hours)");
+  } else if (app.isPackaged && isUbuntuCoreSnap()) {
+    console.log("UPDATER: Running as SNAP - background updates handled by snapd refresh");
   }
 
   app.on("activate", () => {
@@ -1158,33 +1408,23 @@ app.whenReady().then(async () => {
 });
 
 
-app.on("before-quit", async (e) => {
-  // Clear background update interval first
+app.on("before-quit", async () => {
+  console.log("APP: before-quit - cleaning up workers and intervals...");
+
+  // Clear background update interval
   if (backgroundUpdateInterval) {
     clearInterval(backgroundUpdateInterval);
     backgroundUpdateInterval = null;
-    console.log("UPDATER: Cleared background update interval");
   }
-  
+
+  // Terminate workers if module loaded (belt-and-suspenders - close handler may have already done this)
   if (workersModule) {
-    e.preventDefault();
-    console.log("Stopping workers...");
-    await workersModule.stopAllWorkers();
-    workersModule = null;
-    console.log("Workers stopped, closing window...");
-    
-    // Destroy the window to free up resources
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.destroy();
+    try {
+      await workersModule.stopAllWorkers();
+      console.log("APP: workers terminated successfully");
+    } catch (err) {
+      console.error("APP: error terminating workers:", err);
     }
-    
-    // Remove all IPC handlers
-    console.log("Removing IPC handlers...");
-    ipcMain.removeAllListeners();
-    
-    console.log("Forcing process exit...");
-    // Force immediate exit - bypasses event loop cleanup
-    process.exit(0);
   }
 });
 

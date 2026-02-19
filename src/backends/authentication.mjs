@@ -8,10 +8,10 @@ import axios from 'axios';
 import os from 'os';
 import { config as envConfig } from '../config/environment.mjs';
 
-const homeDirectory = os.homedir()
-const masterDirectory = path.join(homeDirectory, envConfig.productName)
-const applicationData = path.join(masterDirectory, "application-data")
-const configsDirectory = path.join(masterDirectory, "device-configs")
+// Use centralized cross-platform paths from environment config
+const masterDirectory = envConfig.masterDirectory || path.join(os.homedir(), envConfig.productName)
+const applicationData = envConfig.applicationDataDirectory || path.join(masterDirectory, "application-data")
+const configsDirectory = envConfig.deviceConfigsDirectory || path.join(masterDirectory, "device-configs")
 
 async function downloadFileStream(url, filePath, headers = {}) {
   const response = await axios.get(url, {

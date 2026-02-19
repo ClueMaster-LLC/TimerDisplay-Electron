@@ -2,6 +2,84 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import StartupMessage from "../components/StartupMessage";
 
+// Check if browser supports HEVC/H.265 codec
+function checkHevcSupport() {
+  const testVideo = document.createElement('video');
+  const hevcCodecs = [
+    'video/mp4; codecs="hev1.1.6.L93.B0"',
+    'video/mp4; codecs="hvc1.1.6.L93.B0"',
+    'video/mp4; codecs="hev1"',
+    'video/mp4; codecs="hvc1"',
+  ];
+
+  for (const codec of hevcCodecs) {
+    const support = testVideo.canPlayType(codec);
+    if (support === 'probably' || support === 'maybe') {
+      console.log(`Loading: HEVC supported via codec: ${codec}`);
+      return true;
+    }
+  }
+  console.log('Loading: HEVC NOT supported - transcoding will be enabled');
+  return false;
+}
+
+// Check if VP9 has hardware-accelerated decode support
+async function checkVp9HardwareSupport() {
+  if (!navigator.mediaCapabilities) {
+    console.log('Loading: mediaCapabilities API not available, assuming software VP9');
+    return false;
+  }
+
+  // Try WebM container (more common for VP9)
+  const webmConfig = {
+    type: 'file',
+    video: {
+      contentType: 'video/webm; codecs="vp9"',
+      width: 1920,
+      height: 1080,
+      framerate: 30,
+      bitrate: 10000000
+    }
+  };
+
+  try {
+    const webmResult = await navigator.mediaCapabilities.decodingInfo(webmConfig);
+    if (webmResult.powerEfficient) {
+      console.log('Loading: VP9 (WebM) has hardware accelerated decode');
+      return true;
+    }
+    console.log('Loading: VP9 (WebM) decode info:', { supported: webmResult.supported, smooth: webmResult.smooth, powerEfficient: webmResult.powerEfficient });
+  } catch (e) {
+    console.log('Loading: VP9 WebM check failed:', e.message);
+  }
+
+  // Try MP4 container as fallback
+  const mp4Config = {
+    type: 'file',
+    video: {
+      contentType: 'video/mp4; codecs="vp09.00.10.08"',
+      width: 1920,
+      height: 1080,
+      framerate: 30,
+      bitrate: 10000000
+    }
+  };
+
+  try {
+    const mp4Result = await navigator.mediaCapabilities.decodingInfo(mp4Config);
+    if (mp4Result.powerEfficient) {
+      console.log('Loading: VP9 (MP4) has hardware accelerated decode');
+      return true;
+    }
+    console.log('Loading: VP9 (MP4) decode info:', { supported: mp4Result.supported, smooth: mp4Result.smooth, powerEfficient: mp4Result.powerEfficient });
+  } catch (e) {
+    console.log('Loading: VP9 MP4 check failed:', e.message);
+  }
+
+  console.log('Loading: VP9 does NOT have hardware accelerated decode - will transcode to H.264');
+  return false;
+}
+
 export default function Loading() {
   const [status, setStatus] = useState("");
   const [progress, setProgress] = useState(0);
@@ -9,7 +87,20 @@ export default function Loading() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    window.LoadingBackend.worker();
+    // Check codec support before starting worker
+    async function startLoading() {
+      const hevcSupported = checkHevcSupport();
+      console.log(`Loading: HEVC/H.265 native support: ${hevcSupported ? 'YES' : 'NO'}`);
+
+      // Check VP9 hardware decode support
+      const vp9HardwareSupported = await checkVp9HardwareSupport();
+      console.log(`Loading: VP9 hardware decode support: ${vp9HardwareSupported ? 'YES' : 'NO (will transcode)'}`);
+
+      // Pass codec support status to backend - transcode if NOT hardware supported
+      window.LoadingBackend.worker({ hevcSupported, vp9HardwareSupported });
+    }
+
+    startLoading();
     const statusEventHandler = window.LoadingBackend.onLoadingStatusEvent(
       (event) => {
         if (event.status !== null) {
@@ -24,6 +115,11 @@ export default function Loading() {
         }
         if (event.progress === true) {
           setProgress((progress) => progress + 1);
+        }
+        // Handle percentage-based progress (e.g., transcoding)
+        if (typeof event.progressPercent === 'number') {
+          setProgress(event.progressPercent);
+          setProgressMax(100);
         }
       }
     );

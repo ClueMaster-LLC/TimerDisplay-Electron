@@ -10,16 +10,20 @@ import fs from "fs";
 import path from "path";
 import axios from "axios";
 import os from "os";
+import { needsTranscoding, transcodeToH264, getTranscodedFileName } from './transcoder.mjs';
 
 import { createRequire } from "module";
 import { config as envConfig } from '../config/environment.mjs';
+
+// Supported video extensions for transcoding checks
+const SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.mpg', '.mpeg', '.m4v', '.mkv', '.webm', '.avi', '.mov'];
 const require = createRequire(import.meta.url);
 const _package = require("../../package.json");
 
-const homeDirectory = os.homedir();
-const masterDirectory = path.join(homeDirectory, envConfig.productName);
-const applicationData = path.join(masterDirectory, "application-data");
-const configsDirectory = path.join(masterDirectory, "device-configs");
+// Use centralized cross-platform paths from environment config
+const masterDirectory = envConfig.masterDirectory || path.join(os.homedir(), envConfig.productName);
+const applicationData = envConfig.applicationDataDirectory || path.join(masterDirectory, "application-data");
+const configsDirectory = envConfig.deviceConfigsDirectory || path.join(masterDirectory, "device-configs");
 
 async function downloadFileStream(url, filePath, headers = {}) {
   const response = await axios.get(url, {
@@ -36,7 +40,13 @@ async function downloadFileStream(url, filePath, headers = {}) {
   });
 }
 
-ipcMain.handle("loading:worker", async () => {
+ipcMain.handle("loading:worker", async (_event, options = {}) => {
+  // Check if browser supports codecs natively (passed from renderer)
+  const hevcSupported = options?.hevcSupported ?? false;
+  const vp9HardwareSupported = options?.vp9HardwareSupported ?? true; // Default true for backward compat
+  console.log(`Loading: HEVC native support from browser: ${hevcSupported ? 'YES' : 'NO'}`);
+  console.log(`Loading: VP9 hardware decode support: ${vp9HardwareSupported ? 'YES' : 'NO (will transcode)'}`);
+
   const deviceUniqueCode = store.get("uniqueCode");
   const apiKey = store.get("APIToken");
   const roomInfoAPIEndpoint = roomInfoAPI.replace(
@@ -362,6 +372,119 @@ ipcMain.handle("loading:worker", async () => {
           }
         }
       }
+
+      // ── Transcode problematic codecs (H.265, AV1, VP9) to H.264 ──
+      // Skip transcoding if:
+      // 1. Windows AND VP9 hardware decode is available (all codecs play natively)
+      // 2. Browser reports HEVC support (VA-API working on Linux with modern GPU) - still transcode VP9/AV1
+      const isWindows = process.platform === 'win32';
+      const needsVp9Transcode = isWindows && !vp9HardwareSupported;
+      const shouldTranscode = !isWindows || needsVp9Transcode;
+
+      if (shouldTranscode) {
+        const reason = needsVp9Transcode
+          ? 'Windows with VP9 software-only decode detected, will transcode VP9 videos'
+          : 'Non-Windows platform, checking video codecs for transcoding needs...';
+        console.log(`Loading: ${reason}`);
+        window.webContents.send("loading:status", { status: "Checking video codecs..." });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Collect all video file paths from media directories
+        const videoDirectories = [
+          videoFilesDirectory,
+          introMediaDirectory,
+          successMediaDirectory,
+          failMediaDirectory,
+          clueMediaDirectory,
+        ];
+
+        const allVideoFiles = [];
+        for (const dir of videoDirectories) {
+          if (fs.existsSync(dir)) {
+            const files = fs.readdirSync(dir);
+            for (const file of files) {
+              const ext = path.extname(file).toLowerCase();
+              if (SUPPORTED_VIDEO_EXTENSIONS.includes(ext)) {
+                allVideoFiles.push(path.join(dir, file));
+              }
+            }
+          }
+        }
+
+        let transcodedCount = 0;
+        for (let i = 0; i < allVideoFiles.length; i++) {
+          const filePath = allVideoFiles[i];
+          const fileName = path.basename(filePath);
+
+          try {
+            const transcodeCheck = await needsTranscoding(filePath);
+
+            // For HEVC, skip if browser reports native support
+            const skipHevc = transcodeCheck.originalCodec === 'HEVC' && hevcSupported;
+            // On Windows, skip VP9 transcoding if hardware decode is available
+            const skipVp9OnWindows = transcodeCheck.originalCodec === 'VP9' && isWindows && vp9HardwareSupported;
+            // On Windows with VP9 software-only, skip non-VP9 codecs (only transcode VP9)
+            const skipNonVp9OnWindows = needsVp9Transcode && transcodeCheck.originalCodec !== 'VP9';
+            const skipThisCodec = skipHevc || skipVp9OnWindows || skipNonVp9OnWindows;
+
+            if (transcodeCheck.needsTranscode && !skipThisCodec) {
+              transcodedCount++;
+              const transcodedFileName = getTranscodedFileName(fileName);
+              const transcodedFilePath = path.join(path.dirname(filePath), transcodedFileName);
+
+              console.log(`Loading: Transcoding ${fileName}: ${transcodeCheck.originalCodec} → H.264`);
+              window.webContents.send("loading:status", {
+                status: `Transcoding video ${transcodedCount} (${transcodeCheck.originalCodec} → H.264)...`,
+              });
+              window.webContents.send("loading:progress", { progressPercent: 0 });
+
+              const success = await transcodeToH264(
+                filePath,
+                transcodedFilePath,
+                (progress) => {
+                  window.webContents.send("loading:status", {
+                    status: `Transcoding video ${transcodedCount}: ${progress}%`,
+                  });
+                  window.webContents.send("loading:progress", { progressPercent: progress });
+                },
+                transcodeCheck.originalCodec
+              );
+
+              if (success) {
+                // Delete original file and rename transcoded file to original name
+                // This keeps the filename unchanged (prevents cloud re-download loop)
+                try {
+                  await fs.promises.unlink(filePath);
+                  console.log(`Loading: Deleted original ${transcodeCheck.originalCodec} file: ${fileName}`);
+                  await fs.promises.rename(transcodedFilePath, filePath);
+                  console.log(`Loading: ✅ Renamed ${transcodedFileName} → ${fileName}`);
+                } catch (fileErr) {
+                  console.error(`Loading: Error replacing file ${fileName}:`, fileErr.message);
+                  if (fs.existsSync(transcodedFilePath)) {
+                    console.log(`Loading: Using transcoded filename: ${transcodedFileName}`);
+                  }
+                }
+              } else {
+                console.log(`Loading: ⚠️ Transcoding failed for ${fileName}, will try software decode`);
+              }
+            }
+          } catch (error) {
+            console.error(`Loading: Error checking/transcoding ${fileName}:`, error.message);
+          }
+        }
+
+        if (transcodedCount > 0) {
+          window.webContents.send("loading:status", {
+            status: `Transcoding complete (${transcodedCount} videos converted to H.264)`,
+          });
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        } else {
+          console.log('Loading: No videos needed transcoding');
+        }
+      } else {
+        console.log('Loading: Windows with full codec support, skipping transcoding');
+      }
+
       window.webContents.send("loading:status", {
         status: "Confirming room configurations",
       });

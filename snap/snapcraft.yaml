@@ -1,0 +1,402 @@
+name: cluemaster-mediadisplay-core
+base: core24
+version: '2026.2.1-DEV'
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  BUILD MODE: Change to 'prod' for production builds                       ║
+# ║  Location: parts → electron-app → build-environment → BUILD_MODE          ║
+# ║  Values: 'dev' (development) or 'prod' (production)                       ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+
+summary: ClueMaster Timer Display for Escape Rooms
+title: ClueMaster Timer Display
+description: |
+  Dynamic TV Display software for escape rooms. Displays timers and game hint information.
+  Designed for Ubuntu Core with ubuntu-frame support.
+  
+  Features:
+  - Hardware-accelerated video playback (VA-API/VDPAU)
+  - FFmpeg integration for video processing
+  - Cloud API synchronization
+  - Wayland/ubuntu-frame optimized
+
+license: Proprietary
+contact: https://cluemaster.io/contact
+website: https://cluemaster.io
+
+grade: stable
+confinement: strict
+
+platforms:
+  amd64:
+
+apps:
+  daemon:
+    command: usr/bin/wrapper
+    daemon: simple
+    restart-condition: always
+    restart-delay: 5s
+    plugs:
+      - network
+      - network-bind
+      - opengl
+      - wayland
+      - alsa
+      - hardware-observe
+      - shutdown
+      - removable-media
+      - mount-observe
+
+    environment:
+      # Data directory
+      HOME: "$SNAP_USER_DATA"
+      TMPDIR: "$SNAP_USER_DATA/tmp"
+      
+      # Disable D-Bus dependent services at environment level (before Chromium starts)
+      # These must be set here, not just in wrapper, because some libraries check on load
+      NO_AT_BRIDGE: "1"
+      GTK_A11Y: "none"
+      AT_SPI2_CORE_NO_DBUS: "1"
+      LIBGL_DRI3_DISABLE: "1"
+      
+      # Library paths (including Mesa subdirectories, OSS/ALSA)
+      LD_LIBRARY_PATH: "$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu/mesa:$SNAP/usr/lib/x86_64-linux-gnu/mesa-egl:$SNAP/usr/lib/x86_64-linux-gnu/oss4-libsalsa:$SNAP/usr/lib/x86_64-linux-gnu/alsa-lib:$SNAP/usr/lib:$SNAP/lib/x86_64-linux-gnu:$SNAP/lib:$LD_LIBRARY_PATH"
+      
+      # GTK/GDK
+      GTK_USE_PORTAL: "0"
+      GDK_BACKEND: wayland
+      GTK_MODULES: ""
+      # Use memory backend to avoid needing compiled schemas (kiosk app doesn't need gsettings persistence)
+      GSETTINGS_BACKEND: memory
+      GSETTINGS_SCHEMA_DIR: "$SNAP/usr/share/glib-2.0/schemas"
+      # Disable GIO extra modules to prevent libproxy and other module loading issues
+      GIO_MODULE_DIR: ""
+      GIO_EXTRA_MODULES: ""
+      
+      # Note: Do NOT set DBUS_SESSION_BUS_ADDRESS="" here - Chromium tries to parse empty string as address
+      # The wrapper script handles unsetting it properly
+      
+      # Fonts
+      FONTCONFIG_PATH: "$SNAP/etc/fonts"
+      FONTCONFIG_FILE: "$SNAP/etc/fonts/fonts.conf"
+      
+      # XDG
+      XDG_DATA_DIRS: "$SNAP/usr/share:$XDG_DATA_DIRS"
+      XDG_DATA_HOME: "$SNAP_USER_DATA/.local/share"
+      XDG_CONFIG_HOME: "$SNAP_USER_DATA/.config"
+      XDG_SESSION_TYPE: wayland
+      # Daemons run as root (uid 0), not user 1000
+      XDG_RUNTIME_DIR: "${XDG_RUNTIME_DIR:-/run/user/0}"
+      
+      # Graphics - use snapd-injected host GL drivers + bundled fallbacks
+      # snapd injects host GL/VA-API drivers via opengl plug at /var/lib/snapd/lib/gl
+      LIBGL_DRIVERS_PATH: "/var/lib/snapd/lib/gl:$SNAP/usr/lib/x86_64-linux-gnu/dri"
+      # VA-API: snapd doesn't inject VA-API drivers, use bundled only
+      LIBVA_DRIVERS_PATH: "$SNAP/usr/lib/x86_64-linux-gnu/dri"
+      LIBVA_DRIVER_NAME: "iHD"
+      VDPAU_DRIVER_PATH: "$SNAP/usr/lib/x86_64-linux-gnu/vdpau"
+      __EGL_VENDOR_LIBRARY_DIRS: "/var/lib/snapd/lib/gl:$SNAP/usr/share/glvnd/egl_vendor.d"
+      
+      # Keyboard layouts
+      XKB_CONFIG_ROOT: "$SNAP/usr/share/X11/xkb"
+      
+      # Wayland
+      WAYLAND_DISPLAY: "${WAYLAND_DISPLAY:-wayland-0}"
+      ELECTRON_OZONE_PLATFORM_HINT: auto
+      
+      # Audio - ALSA direct (Ubuntu Core uses ALSA without PulseAudio/PipeWire)
+      ALSA_CONFIG_PATH: "$SNAP/usr/share/alsa/alsa.conf"
+      
+      # Electron/Chromium - disable sandbox for all processes (daemon runs as root)
+      ELECTRON_DISABLE_SANDBOX: "1"
+      ELECTRON_EXTRA_LAUNCH_ARGS: "--no-sandbox --disable-gpu-sandbox --no-zygote --disable-dev-shm-usage --in-process-gpu"
+      
+      # App config
+      NODE_ENV: production
+
+parts:
+  # Mesa/OpenGL drivers (required without gnome extension)
+  mesa-drivers:
+    plugin: nil
+    stage-packages:
+      # Core Mesa/OpenGL
+      - libgl1-mesa-dri
+      - libglx-mesa0
+      - libegl-mesa0
+      - libegl1
+      - libgbm1
+      - libglapi-mesa
+      - libgl1
+      - libgles2
+      - mesa-vulkan-drivers
+      - libvulkan1
+      - libdrm2
+      - libxatracker2
+      
+      # VA-API hardware video acceleration
+      - libva2
+      - libva-drm2
+      - libva-wayland2
+      - libva-x11-2
+      - va-driver-all
+      - i965-va-driver
+      - intel-media-va-driver
+      - mesa-va-drivers
+      
+      # VDPAU hardware video acceleration
+      - libvdpau1
+      - vdpau-driver-all
+      - mesa-vdpau-drivers
+
+  # FFmpeg binary for H.265 to H.264 transcoding
+  # GPL variant includes libx264 encoder and libx265 decoder
+  ffmpeg-binary:
+    plugin: nil
+    build-packages:
+      - wget
+      - tar
+      - xz-utils
+      - curl
+      - jq
+    override-build: |
+      set -e
+      echo "Fetching latest FFmpeg GPL stable release URL from GitHub..."
+      
+      # Use GitHub API to get the latest release assets
+      # Match stable release (n*.0) static build, exclude 'master' and 'shared' variants
+      # Pattern: ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz or similar
+      DOWNLOAD_URL=$(curl -s https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest | \
+        jq -r '.assets[] | select(.name | test("^ffmpeg-n[0-9.]+-latest-linux64-gpl-[0-9.]+\\.tar\\.xz$")) | .browser_download_url' | \
+        head -n 1)
+      
+      if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+        echo "ERROR: Could not find FFmpeg stable release download URL from GitHub API"
+        echo "Available assets:"
+        curl -s https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest | jq -r '.assets[].name' | grep linux64
+        exit 1
+      fi
+      
+      echo "Downloading FFmpeg from: $DOWNLOAD_URL"
+      wget -O ffmpeg.tar.xz "$DOWNLOAD_URL"
+      
+      # Extract
+      tar -xf ffmpeg.tar.xz
+      
+      # Find extracted directory
+      FFMPEG_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-*" | head -n 1)
+      echo "Extracted FFmpeg to: $FFMPEG_DIR"
+      
+      # Copy ffmpeg binary and libraries
+      mkdir -p $CRAFT_PART_INSTALL/bin
+      mkdir -p $CRAFT_PART_INSTALL/lib/x86_64-linux-gnu
+      
+      cp -v $FFMPEG_DIR/bin/ffmpeg $CRAFT_PART_INSTALL/bin/
+      cp -v $FFMPEG_DIR/bin/ffprobe $CRAFT_PART_INSTALL/bin/
+      chmod +x $CRAFT_PART_INSTALL/bin/ffmpeg
+      chmod +x $CRAFT_PART_INSTALL/bin/ffprobe
+      
+      # Copy required libraries to standard lib path
+      cp -av $FFMPEG_DIR/lib/*.so* $CRAFT_PART_INSTALL/lib/x86_64-linux-gnu/ || true
+      
+      echo "FFmpeg binary installed:"
+      ls -lh $CRAFT_PART_INSTALL/bin/ffmpeg
+      echo "FFmpeg libraries:"
+      ls -lh $CRAFT_PART_INSTALL/lib/x86_64-linux-gnu/ | head -10
+      
+      # Verify it has H.264 encoder
+      if LD_LIBRARY_PATH=$CRAFT_PART_INSTALL/lib/x86_64-linux-gnu $CRAFT_PART_INSTALL/bin/ffmpeg -encoders 2>/dev/null | grep -q libx264; then
+        echo "✅ libx264 (H.264 encoder) available"
+      else
+        echo "⚠️  libx264 not found"
+      fi
+
+  cluemaster-timerdisplay:
+    plugin: nil
+    source: .
+    after: [mesa-drivers, ffmpeg-binary]
+    build-snaps:
+      - node/24/stable
+    stage-packages:
+      # NSS/NSPR (Electron security libraries)
+      - libnspr4
+      - libnss3
+      - libnss3-tools
+      
+      # Audio (ALSA direct - Ubuntu Core uses ALSA without PulseAudio/PipeWire)
+      # apulse provides PulseAudio API that redirects to ALSA (required for Chromium)
+      - libasound2t64
+      - libasound2-data
+      - libasound2-plugins
+      - alsa-utils
+      - apulse
+      
+      # GTK3 and dependencies (UI toolkit for Electron - t64 versions for core24)
+      - libgtk-3-0t64
+      - libgdk-pixbuf-2.0-0
+      - libcairo2
+      - libpango-1.0-0
+      - libpangocairo-1.0-0
+      - libatk1.0-0t64
+      - libatk-bridge2.0-0t64
+      - libatspi2.0-0
+      
+      # Wayland (compositor protocol)
+      - libwayland-client0
+      - libwayland-cursor0
+      - libwayland-egl1
+      - libwayland-server0
+      
+      # X11 libraries (Electron has some hard dependencies even on Wayland)
+      - libx11-6
+      - libxcb1
+      - libxext6
+      - libxfixes3
+      - libxkbcommon0
+      - libxkbcommon-x11-0
+      
+      # Keyboard layouts (xkbcommon)
+      - xkb-data
+      
+      # Fonts and text rendering
+      - fontconfig
+      - fonts-liberation
+      - fonts-noto-core
+      - libfontconfig1
+      - libfreetype6
+      
+      # DBus (inter-process communication)
+      - libdbus-1-3
+      - dbus
+      
+      # System libraries
+      - libglib2.0-0
+      - libexpat1
+      - libuuid1
+      - libcups2
+      - libxss1
+      - libxtst6
+      - gsettings-desktop-schemas
+      - libglib2.0-bin
+      
+      # Video acceleration (VA-API, VDPAU)
+      - libva2
+      - libva-drm2
+      - libva-x11-2
+      - libvdpau1
+      - mesa-va-drivers
+      - mesa-vdpau-drivers
+      
+      # H.265/HEVC codec support
+      - libde265-0
+      - libx265-199
+
+    # ════════════════════════════════════════════════════════════
+    #  BUILD MODE: Change 'dev' to 'prod' for production builds
+    # ════════════════════════════════════════════════════════════
+    build-environment:
+      - BUILD_MODE: 'dev'  # 'dev' or 'prod' - controls Vite build mode
+      - PATH: "$PATH:$CRAFT_PART_BUILD/node_modules/.bin"
+      - ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    override-build: |
+      set +u
+      
+      # Map snapcraft arch to electron arch for later use
+      case "${CRAFT_ARCH_BUILD_FOR:-amd64}" in
+        amd64) ELECTRON_ARCH=x64 ;;
+        arm64) ELECTRON_ARCH=arm64 ;;
+        armhf) ELECTRON_ARCH=armv7l ;;
+        *) ELECTRON_ARCH=x64 ;;
+      esac
+      
+      # Update npm to latest version
+      echo "Updating npm to latest..."
+      npm install -g npm@latest
+      
+      # Install dependencies (skip binary downloads with ELECTRON_SKIP_BINARY_DOWNLOAD=1)
+      npm ci --prefer-offline --no-audit
+      
+      # Build Vite bundle (uses BUILD_MODE from build-environment)
+      npm run build:${BUILD_MODE}
+      
+      # Install electron-packager (simpler than electron-builder)
+      npm install electron-packager
+      
+      # Package with electron-packager (no dependency tree parsing issues)
+      electron-packager . --overwrite --platform=linux --arch=${ELECTRON_ARCH} \
+        --output=release-build --prune=true
+      
+      # Copy packaged app to install directory
+      cp -av ./cluemaster-timerdisplay-linux-* ${CRAFT_PART_INSTALL}/electron-app
+  
+  wrapper:
+    plugin: dump
+    source: wrapper
+    organize:
+      wrapper.sh: usr/bin/wrapper
+    override-stage: |
+      craftctl default
+      chmod +x ${CRAFT_STAGE}/usr/bin/wrapper
+
+  # Compile GSettings schemas after all parts are staged
+  finalize-schemas:
+    plugin: nil
+    after: [cluemaster-timerdisplay, wrapper]
+    build-packages:
+      - libglib2.0-dev
+    override-prime: |
+      craftctl default
+      
+      # Ensure schemas directory exists in prime
+      mkdir -p ${CRAFT_PRIME}/usr/share/glib-2.0/schemas
+      
+      # Copy schema XML files from the staged packages
+      echo "Looking for schema files..."
+      find ${CRAFT_PRIME} -name "*.gschema.xml" -type f 2>/dev/null | head -20
+      
+      # Copy from multiple possible locations
+      for dir in ${CRAFT_PRIME}/usr/share/glib-2.0/schemas ${CRAFT_STAGE}/usr/share/glib-2.0/schemas; do
+        if [ -d "$dir" ]; then
+          echo "Checking $dir for schemas..."
+          ls -la "$dir" 2>/dev/null || true
+          cp -av "$dir"/*.xml ${CRAFT_PRIME}/usr/share/glib-2.0/schemas/ 2>/dev/null || true
+          cp -av "$dir"/*.override ${CRAFT_PRIME}/usr/share/glib-2.0/schemas/ 2>/dev/null || true
+        fi
+      done
+      
+      echo "Schema files to compile:"
+      ls -la ${CRAFT_PRIME}/usr/share/glib-2.0/schemas/
+      
+      # Compile schemas using the build-time tool
+      echo "Compiling GSettings schemas..."
+      glib-compile-schemas ${CRAFT_PRIME}/usr/share/glib-2.0/schemas/ 2>&1 || echo "Warning: Schema compilation had issues"
+      
+      echo "Final schema directory contents:"
+      ls -la ${CRAFT_PRIME}/usr/share/glib-2.0/schemas/
+      echo "Compiled schema size:"
+      stat -c%s ${CRAFT_PRIME}/usr/share/glib-2.0/schemas/gschemas.compiled 2>/dev/null || echo "NOT FOUND"
+
+# Mesa expects config files in absolute system paths
+layout:
+  /usr/share/drirc.d:
+    bind: $SNAP/usr/share/drirc.d
+  /usr/share/libdrm:
+    bind: $SNAP/usr/share/libdrm
+  /usr/share/glvnd:
+    bind: $SNAP/usr/share/glvnd
+  /usr/lib/x86_64-linux-gnu/dri:
+    bind: $SNAP/usr/lib/x86_64-linux-gnu/dri
+  /usr/lib/x86_64-linux-gnu/gbm:
+    bind: $SNAP/usr/lib/x86_64-linux-gnu/gbm
+  /usr/lib/x86_64-linux-gnu/vdpau:
+    bind: $SNAP/usr/lib/x86_64-linux-gnu/vdpau
+  /usr/share/glib-2.0/schemas:
+    bind: $SNAP/usr/share/glib-2.0/schemas
+  # ALSA configuration (required for audio)
+  /usr/share/alsa:
+    bind: $SNAP/usr/share/alsa
+  /usr/lib/x86_64-linux-gnu/alsa-lib:
+    bind: $SNAP/usr/lib/x86_64-linux-gnu/alsa-lib
+
+plugs:
+  removable-media:
+    read: all

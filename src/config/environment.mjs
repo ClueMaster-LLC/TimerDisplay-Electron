@@ -13,6 +13,25 @@ const BUILD_TIME_CONFIG = {
   VITE_APP_ID: ''
 };
 
+// ─── Platform & SNAP detection ───────────────────────────────────────────────
+const isSnap = typeof process !== 'undefined' && process.env?.SNAP !== undefined;
+const isLinux = typeof process !== 'undefined' && process.platform === 'linux';
+const isWindows = typeof process !== 'undefined' && process.platform === 'win32';
+const isUbuntuCore = isLinux && isSnap;
+
+// SNAP environment paths
+const snapUserData = typeof process !== 'undefined' ? process.env?.SNAP_USER_DATA : undefined;
+const snapUserCommon = typeof process !== 'undefined' ? process.env?.SNAP_USER_COMMON : undefined;
+
+// Home directory (cross-platform)
+const homeDirectory = typeof process !== 'undefined' && typeof require !== 'undefined'
+  ? require('os').homedir()
+  : (typeof process !== 'undefined' ? process.env?.HOME || process.env?.USERPROFILE : undefined);
+
+// Path utilities
+const pathSep = typeof process !== 'undefined' && process.platform === 'win32' ? '\\' : '/';
+const joinPath = (...parts) => parts.filter(Boolean).join(pathSep);
+
 // Check if we have build-time config (packaged app) or runtime config (dev/renderer)
 function getEnv() {
   // In renderer process with Vite
@@ -47,6 +66,39 @@ if (!env.VITE_APP_ID) {
   throw new Error('FATAL: VITE_APP_ID environment variable is not set. Check .env.development or .env.production file and ensure build script runs correctly.');
 }
 
+// ─── Directory Structure (cross-platform) ────────────────────────────────────
+// SNAP uses a fixed directory name for upgrade compatibility
+const appDirName = isSnap ? "CluemasterTimerDisplay" : env.VITE_PRODUCT_NAME;
+
+// Master directory where all app data is stored
+const masterDirectory = isSnap && snapUserData
+  ? joinPath(snapUserData, appDirName)
+  : homeDirectory ? joinPath(homeDirectory, appDirName) : undefined;
+
+const applicationDataDirectory = masterDirectory ? joinPath(masterDirectory, "application-data") : undefined;
+const mediaFilesDirectory = applicationDataDirectory ? joinPath(applicationDataDirectory, "media-files") : undefined;
+const deviceConfigsDirectory = masterDirectory ? joinPath(masterDirectory, "device-configs") : undefined;
+
+// USB/Removable media paths (platform-specific)
+const getRemovableMediaPaths = () => {
+  if (isWindows) return []; // Windows uses drive letters
+  if (isSnap) {
+    return ['/media/root', '/run/media/root', '/media', '/mnt'];
+  }
+  if (isLinux && typeof require !== 'undefined') {
+    const os = require('os');
+    const username = os.userInfo().username;
+    return [
+      joinPath('/media', username),
+      joinPath('/run/media', username),
+      '/media',
+      '/mnt'
+    ];
+  }
+  return ['/media', '/mnt'];
+};
+const removableMediaPaths = getRemovableMediaPaths();
+
 export const config = {
   // Vite exposes env vars prefixed with VITE_ to the renderer
   apiBaseUrl: env.VITE_API_BASE_URL,
@@ -56,6 +108,25 @@ export const config = {
   appId: env.VITE_APP_ID, // Required - no fallback to ensure proper directory separation
   isDevelopment: env.VITE_ENVIRONMENT === 'development',
   isProduction: env.VITE_ENVIRONMENT === 'production',
+
+  // Platform detection
+  isSnap,
+  isLinux,
+  isWindows,
+  isUbuntuCore,
+
+  // Platform-specific paths
+  snapUserData,
+  snapUserCommon,
+  homeDirectory,
+
+  // Data directories
+  appDirName,
+  masterDirectory,
+  applicationDataDirectory,
+  mediaFilesDirectory,
+  deviceConfigsDirectory,
+  removableMediaPaths,
 };
 
 // For debugging (remove in production)
