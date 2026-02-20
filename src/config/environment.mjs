@@ -79,26 +79,6 @@ const applicationDataDirectory = masterDirectory ? joinPath(masterDirectory, "ap
 const mediaFilesDirectory = applicationDataDirectory ? joinPath(applicationDataDirectory, "media-files") : undefined;
 const deviceConfigsDirectory = masterDirectory ? joinPath(masterDirectory, "device-configs") : undefined;
 
-// USB/Removable media paths (platform-specific)
-const getRemovableMediaPaths = () => {
-  if (isWindows) return []; // Windows uses drive letters
-  if (isSnap) {
-    return ['/media/root', '/run/media/root', '/media', '/mnt'];
-  }
-  if (isLinux && typeof require !== 'undefined') {
-    const os = require('os');
-    const username = os.userInfo().username;
-    return [
-      joinPath('/media', username),
-      joinPath('/run/media', username),
-      '/media',
-      '/mnt'
-    ];
-  }
-  return ['/media', '/mnt'];
-};
-const removableMediaPaths = getRemovableMediaPaths();
-
 export const config = {
   // Vite exposes env vars prefixed with VITE_ to the renderer
   apiBaseUrl: env.VITE_API_BASE_URL,
@@ -126,7 +106,6 @@ export const config = {
   applicationDataDirectory,
   mediaFilesDirectory,
   deviceConfigsDirectory,
-  removableMediaPaths,
 };
 
 // For debugging (remove in production)

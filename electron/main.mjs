@@ -590,47 +590,6 @@ app.whenReady().then(async () => {
           );
           return new Response("Forbidden", { status: 403 });
         }
-      } else if (source === "external") {
-        // Handle USB drive paths cross-platform
-        if (envConfig.isWindows) {
-          // Windows: media://external/E/path/file.mp4 -> E:\path\file.mp4
-          const [, driveName, ...rest] = url.pathname.split("/");
-          const fileName = rest.join(path.sep);
-          const usbDrivePath = `${driveName}:\\`;
-
-          if (!fs.existsSync(usbDrivePath)) {
-            console.log("USB drive not found:", driveName);
-            return new Response("USB drive not found", { status: 404 });
-          }
-
-          filePath = path.join(usbDrivePath, fileName);
-          if (!filePath.startsWith(usbDrivePath)) {
-            console.error(
-              "Security violation: Attempted to access unauthorized path:",
-              filePath
-            );
-            return new Response("Forbidden", { status: 403 });
-          }
-        } else {
-          // Linux/SNAP: media://external/USB_LABEL/path/file.mp4
-          const [, usbLabel, ...rest] = url.pathname.split("/");
-          const restOfPath = rest.join("/");
-          let found = false;
-
-          for (const mountBase of (envConfig.removableMediaPaths || ['/media', '/mnt'])) {
-            const candidatePath = path.join(mountBase, usbLabel, restOfPath);
-            if (fs.existsSync(candidatePath)) {
-              filePath = candidatePath;
-              found = true;
-              break;
-            }
-          }
-
-          if (!found) {
-            console.log("USB drive not found:", usbLabel);
-            return new Response("USB drive not found", { status: 404 });
-          }
-        }
       } else {
         return new Response("Invalid source", { status: 400 });
       }
@@ -1347,21 +1306,6 @@ app.whenReady().then(async () => {
           filePath = path.resolve(BASE_MEDIA_DIRECTORY, restPath);
         } else if (type === 'tts-cache') {
           filePath = path.resolve(TTS_CACHE_DIRECTORY, restPath);
-        } else if (type === 'external') {
-          const [driveName, ...rest] = restPath.split('/');
-          if (envConfig.isWindows) {
-            filePath = `${driveName}:\\${rest.join(path.sep)}`;
-          } else {
-            // Linux: try removable media mount points
-            const mountBases = envConfig.removableMediaPaths || ['/media', '/mnt'];
-            for (const mountBase of mountBases) {
-              const candidate = path.join(mountBase, driveName, rest.join('/'));
-              if (fs.existsSync(candidate)) {
-                filePath = candidate;
-                break;
-              }
-            }
-          }
         }
       }
 

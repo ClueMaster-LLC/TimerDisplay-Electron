@@ -2,8 +2,6 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { ipcMain } from "electron";
-// Import drivelist safely - handle if it's not available
-let drivelist = null;
 import store from "../backends/state.mjs";
 import { config as envConfig } from '../config/environment.mjs';
 
@@ -82,101 +80,6 @@ function sortByNumericPriority(files) {
   });
 }
 
-async function collectUsbMediaFiles() {
-  try {
-    const usbRoots = [];
-
-    if (envConfig.isLinux || envConfig.isSnap) {
-      // On Linux/SNAP, USB drives mount under /media/<user>/ or removable-media paths
-      const removablePaths = envConfig.removableMediaPaths || ['/media'];
-      for (const basePath of removablePaths) {
-        if (fs.existsSync(basePath)) {
-          try {
-            const entries = fs.readdirSync(basePath, { withFileTypes: true });
-            for (const entry of entries) {
-              if (entry.isDirectory()) {
-                const mountPath = path.join(basePath, entry.name);
-                // For /media, look one level deeper (e.g., /media/<user>/<drive>)
-                if (basePath === '/media') {
-                  try {
-                    const userEntries = fs.readdirSync(mountPath, { withFileTypes: true });
-                    for (const userEntry of userEntries) {
-                      if (userEntry.isDirectory()) {
-                        usbRoots.push(path.join(mountPath, userEntry.name));
-                      }
-                    }
-                  } catch (e) {
-                    // Skip if can't read user directory
-                  }
-                } else {
-                  usbRoots.push(mountPath);
-                }
-              }
-            }
-          } catch (e) {
-            console.log(`Player: Could not read removable media path ${basePath}:`, e.message);
-          }
-        }
-      }
-    } else {
-      // Windows: use drivelist to detect USB drives
-      if (!drivelist) {
-        try {
-          const drivelistModule = await import("drivelist");
-          drivelist = drivelistModule.default;
-        } catch (error) {
-          console.warn(
-            "drivelist not available, skipping USB media detection:",
-            error.message
-          );
-          return [];
-        }
-      }
-
-      const drives = await drivelist.list();
-      drives.forEach((drive) => {
-        if (
-          drive.isUSB &&
-          drive.isRemovable &&
-          !drive.isSystem &&
-          drive.mountpoints.length > 0
-        ) {
-          drive.mountpoints.forEach((mp) => usbRoots.push(path.resolve(mp.path)));
-        }
-      });
-    }
-
-    let usbFiles = [];
-    for (const usbRoot of usbRoots) {
-      if (fs.existsSync(usbRoot)) {
-        const files = collectAllFiles(usbRoot);
-        usbFiles = usbFiles.concat(filterSupportedFiles(files));
-      }
-    }
-
-    const formattedFiles = usbFiles.map((file) => {
-      if (envConfig.isLinux || envConfig.isSnap) {
-        // On Linux, use the mount point name as the "drive" identifier
-        // e.g., /media/user/USBDRIVE/file.mp4 → media://external/USBDRIVE/file.mp4
-        const matchedRoot = usbRoots.find((root) => file.startsWith(root));
-        const driveName = matchedRoot ? path.basename(matchedRoot) : "usb";
-        const relativePath = matchedRoot ? path.relative(matchedRoot, file) : path.basename(file);
-        return `media://external/${driveName}/${relativePath}`;
-      } else {
-        const driveRoot = path.parse(file).root;
-        const driveName = driveRoot.replace(/[:\\]/g, ""); // → "X"
-        const relativePath = path.relative(driveRoot, file);
-        return `media://external/${driveName}/${relativePath}`;
-      }
-    });
-
-    return sortByNumericPriority(formattedFiles);
-  } catch (error) {
-    console.log("Player: Error collecting USB media files:", error);
-    return [];
-  }
-}
-
 function collectLocalMediaFiles() {
   let localFiles = [];
   try {
@@ -234,23 +137,15 @@ function collectLocalMediaFiles() {
 ipcMain.handle("player:get-media-assets", async () => {
   try {
     const localFiles = collectLocalMediaFiles();
-    const usbFiles = await collectUsbMediaFiles();
-    console.log(
-      `Player: Found ${localFiles.length} local files and ${usbFiles.length} USB files`
-    );
+    console.log(`Player: Found ${localFiles.length} local media files`);
 
-    const allMediaFiles = [...usbFiles, ...localFiles];
-
-    if (allMediaFiles.length === 0) {
+    if (localFiles.length === 0) {
       console.log("Player - No media files found. Nothing to play.");
       return [];
     }
 
-    console.log(
-      `Player: Final playlist order - USB files: ${usbFiles.length}, Local files: ${localFiles.length}`
-    );
-    console.log("Player: All media files: ", allMediaFiles);
-    return allMediaFiles;
+    console.log("Player: Media files: ", localFiles);
+    return localFiles;
   } catch (error) {
     console.error("Player: Error getting media assets:", error);
     return [];

@@ -55,7 +55,6 @@ Workers access electron-store via message passing (see `worker-helpers.mjs`), ne
 ### Media Protocol System
 **Custom `media://` protocol** serves files securely to sandboxed renderer:
 - `media://local/path` - Local application data files (cached game media)
-- `media://external/drive/path` - External USB drive media
 - `media://tts-cache/hash.wav` - Generated TTS audio files
 
 **Implementation:** Protocol handler in `electron/main.mjs` resolves paths, streams files with proper MIME types. All video/image/audio sources in React must use `media://` URLs.
