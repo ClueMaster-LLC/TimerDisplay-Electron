@@ -1307,7 +1307,6 @@ apps:
       - network-bind
       - opengl
       - alsa
-      - removable-media
       - wayland
       - hardware-observe
       - shutdown

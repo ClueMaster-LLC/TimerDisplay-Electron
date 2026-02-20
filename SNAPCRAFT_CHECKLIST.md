@@ -94,8 +94,8 @@ strict (full security sandboxing)
 - `wayland` / `x11` - Display
 - `audio-playback` - Video audio
 - `hardware-observe` - System stats
-- `removable-media` - USB drives
 - `mount-observe` - Detect mounts
+- `snapd-control` - Snap update management
 
 ## 🐛 Troubleshooting
 

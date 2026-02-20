@@ -1697,32 +1697,49 @@ app.whenReady().then(async () => {
     
     console.log("UPDATER: Daily background update check scheduled (every 24 hours)");
   } else if (app.isPackaged && isUbuntuCoreSnap()) {
-    // Background snap update check — queries snapd every 6 hours and triggers
-    // a refresh if available. Snapd restarts the daemon automatically after refresh.
-    const SNAP_CHECK_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
-    backgroundUpdateInterval = setInterval(async () => {
+    // Reusable function to trigger a snap refresh via snapd.
+    // Called by the background timer and the on-demand IPC handler.
+    const triggerSnapRefresh = async () => {
       const snapName = process.env.SNAP_NAME;
-      if (!snapName) return;
+      if (!snapName) return { ok: false, error: "SNAP_NAME not set" };
+
+      console.log("UPDATER: Triggering snap refresh check for", snapName);
       try {
-        console.log("UPDATER: Running background snap update check...");
         const refreshCheck = await snapdRequest("POST", "/v2/snaps", {
           action: "refresh",
           snaps: [snapName],
         }, 60000);
 
         if (refreshCheck.ok && refreshCheck.data?.change) {
-          console.log(`UPDATER: Background snap refresh started (change ${refreshCheck.data.change})`);
+          console.log(`UPDATER: Snap refresh started (change ${refreshCheck.data.change})`);
           // Don't need to poll — snapd will restart the daemon when done
+          return { ok: true, change: refreshCheck.data.change };
         } else if (refreshCheck.status === 400 && refreshCheck.data?.result?.message?.includes("snap has no updates")) {
-          console.log("UPDATER: Background check — no updates available");
+          console.log("UPDATER: No snap updates available");
+          return { ok: true, upToDate: true };
         } else {
-          console.log("UPDATER: Background snap check response:", refreshCheck.data?.result?.message || refreshCheck.error || "unknown");
+          const msg = refreshCheck.data?.result?.message || refreshCheck.error || "unknown response";
+          console.log("UPDATER: Snap refresh response:", msg);
+          return { ok: false, error: msg };
         }
       } catch (err) {
-        console.log("UPDATER: Background snap check error:", err.message);
+        console.log("UPDATER: Snap refresh error:", err.message);
+        return { ok: false, error: err.message };
       }
+    };
+
+    // On-demand snap refresh — can be triggered from renderer or future backend API
+    ipcMain.handle("app-snap-refresh", async () => {
+      console.log("UPDATER: On-demand snap refresh requested");
+      return await triggerSnapRefresh();
+    });
+
+    // Background snap update check — queries snapd every 24 hours
+    const SNAP_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+    backgroundUpdateInterval = setInterval(async () => {
+      await triggerSnapRefresh();
     }, SNAP_CHECK_INTERVAL);
-    console.log("UPDATER: Background snap update check scheduled (every 6 hours via snapd)");
+    console.log("UPDATER: Background snap update check scheduled (every 24 hours via snapd)");
   }
 
   app.on("activate", () => {

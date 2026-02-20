@@ -120,7 +120,11 @@ sudo snap install --dangerous cluemaster-timerdisplay-core_*.snap
 
 ### Connect Required Plugs
 
-Most plugs auto-connect, but `removable-media` requires manual connection:
+Most plugs auto-connect. The `snapd-control` plug requires manual connection:
+
+```bash
+sudo snap connect cluemaster-mediadisplay-core:snapd-control
+```
 
 ## Ubuntu Frame Setup
 
@@ -333,31 +337,6 @@ $SNAP/bin/ffprobe -version
 exit
 ```
 
-### USB drives not detected
-
-```bash
-# 1. Verify USB auto-mount is set up
-ls -la /etc/udev/rules.d/99-cluemaster-usb-automount.rules
-
-# If missing, run setup:
-sudo /snap/cluemaster-timerdisplay-core/current/bin/setup-usb-automount
-
-# 2. Verify removable-media plug is connected
-snap connections cluemaster-timerdisplay-core | grep removable-media
-
-# Connect if not connected
-sudo snap connect cluemaster-timerdisplay-core:removable-media
-
-# 3. Check mount points after inserting USB
-lsblk
-mount | grep media
-ls -la /media/root/
-
-# 4. Check udev/systemd logs for errors
-journalctl -u 'usb-automount@*' --no-pager -n 20
-journalctl -t cluemaster-usb --no-pager -n 20
-```
-
 ### Network connectivity issues
 
 ```bash
@@ -501,8 +480,8 @@ The app uses `strict` confinement with specific plugs:
 - `wayland` - Display server (ubuntu-frame)
 - `audio-playback` - Video audio
 - `hardware-observe` - System stats (CPU/RAM)
-- `removable-media` - USB drive access
 - `mount-observe` - Detect USB mounts
+- `snapd-control` - Snap update management via snapd API
 
 ### Path Security
 

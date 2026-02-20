@@ -44,7 +44,6 @@ apps:
       - alsa
       - hardware-observe
       - shutdown
-      - removable-media
       - mount-observe
       - snapd-control
 
