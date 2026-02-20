@@ -50,6 +50,18 @@ export G_SLICE=always-malloc
 export G_DEBUG=""
 
 # ─── ALSA / dmix Audio Configuration ──────────────────────────────────────────
+# ALSA_CONFIG_PATH must point to the base alsa.conf (defines hw:, plug:, dmix: types).
+# The .asoundrc is picked up automatically from $HOME (remapped to $SNAP_USER_DATA by snapd).
+if [ -f "/usr/share/alsa/alsa.conf" ]; then
+    export ALSA_CONFIG_PATH="/usr/share/alsa/alsa.conf"
+    echo "ALSA config: /usr/share/alsa/alsa.conf (via layout bind)"
+elif [ -f "$SNAP/usr/share/alsa/alsa.conf" ]; then
+    export ALSA_CONFIG_PATH="$SNAP/usr/share/alsa/alsa.conf"
+    echo "ALSA config: $SNAP/usr/share/alsa/alsa.conf"
+else
+    echo "WARNING: ALSA config not found!"
+fi
+
 ASOUNDRC="$SNAP_USER_DATA/.asoundrc"
 
 echo "Detecting audio devices..."
@@ -119,7 +131,13 @@ ASOUND_HEADER
 pcm.dmix_analog {
     type dmix
     ipc_key 1024
-    slave { pcm "hw:0,0"; period_size 1024; buffer_size 4096; rate 48000 }
+    slave {
+        pcm "hw:0,0"
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+        rate 48000
+    }
 }
 pcm.plug_analog { type plug; slave.pcm "dmix_analog" }
 EOF
@@ -130,7 +148,13 @@ EOF
 pcm.dmix_usb {
     type dmix
     ipc_key 1025
-    slave { pcm "hw:1,0"; period_size 1024; buffer_size 4096; rate 48000 }
+    slave {
+        pcm "hw:1,0"
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+        rate 48000
+    }
 }
 pcm.plug_usb { type plug; slave.pcm "dmix_usb" }
 EOF
@@ -141,7 +165,13 @@ EOF
 pcm.dmix_hdmi0 {
     type dmix
     ipc_key 1026
-    slave { pcm "hw:0,3"; period_size 1024; buffer_size 4096; rate 48000 }
+    slave {
+        pcm "hw:0,3"
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+        rate 48000
+    }
 }
 pcm.plug_hdmi0 { type plug; slave.pcm "dmix_hdmi0" }
 EOF
@@ -152,7 +182,13 @@ EOF
 pcm.dmix_hdmi1 {
     type dmix
     ipc_key 1027
-    slave { pcm "hw:0,7"; period_size 1024; buffer_size 4096; rate 48000 }
+    slave {
+        pcm "hw:0,7"
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+        rate 48000
+    }
 }
 pcm.plug_hdmi1 { type plug; slave.pcm "dmix_hdmi1" }
 EOF
@@ -163,7 +199,13 @@ EOF
 pcm.dmix_hdmi2 {
     type dmix
     ipc_key 1028
-    slave { pcm "hw:0,8"; period_size 1024; buffer_size 4096; rate 48000 }
+    slave {
+        pcm "hw:0,8"
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+        rate 48000
+    }
 }
 pcm.plug_hdmi2 { type plug; slave.pcm "dmix_hdmi2" }
 EOF
@@ -191,7 +233,7 @@ EOF
         fi
     done
     
-    printf "pcm.multi_out {\n    type route\n    slave.pcm {\n        type multi\n${MULTI_SLAVES}${MULTI_BINDINGS}    }\n${TTABLE}}\n\npcm.!default {\n    type plug\n    slave.pcm \"multi_out\"\n}\n" >> "$ASOUNDRC"
+    printf "pcm.multi_out {\n    type route\n    slave.pcm {\n        type multi\n${MULTI_SLAVES}${MULTI_BINDINGS}    }\n${TTABLE}}\n\npcm.!default {\n    type plug\n    slave.pcm \"multi_out\"\n}\n\nctl.!default {\n    type hw\n    card 0\n}\n" >> "$ASOUNDRC"
 
 elif [ $DEVICE_COUNT -eq 2 ]; then
     echo "Configuring dual-output audio with dmix..."
@@ -211,7 +253,13 @@ ASOUND_HEADER
 pcm.dmix_${dev_name} {
     type dmix
     ipc_key ${ipc_key}
-    slave { pcm "${hw_dev}"; period_size 1024; buffer_size 4096; rate 48000 }
+    slave {
+        pcm "${hw_dev}"
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+        rate 48000
+    }
 }
 pcm.plug_${dev_name} { type plug; slave.pcm "dmix_${dev_name}" }
 EOF
@@ -235,65 +283,85 @@ EOF
             SLAVE_IDX=$((SLAVE_IDX + 1))
         fi
     done
-    printf "pcm.multi_out {\n    type route\n    slave.pcm {\n        type multi\n${MULTI_SLAVES}${MULTI_BINDINGS}    }\n${TTABLE}}\n\npcm.!default {\n    type plug\n    slave.pcm \"multi_out\"\n}\n" >> "$ASOUNDRC"
+    printf "pcm.multi_out {\n    type route\n    slave.pcm {\n        type multi\n${MULTI_SLAVES}${MULTI_BINDINGS}    }\n${TTABLE}}\n\npcm.!default {\n    type plug\n    slave.pcm \"multi_out\"\n}\n\nctl.!default {\n    type hw\n    card 0\n}\n" >> "$ASOUNDRC"
 
 elif [ $DEVICE_COUNT -eq 1 ]; then
     echo "Configuring single-output audio with dmix..."
-    if [ $HAS_HDMI0 -eq 1 ]; then
-        cat > "$ASOUNDRC" << 'EOF'
-pcm.dmix_hdmi0 {
-    type dmix
-    ipc_key 1026
-    slave { pcm "hw:0,3"; period_size 1024; buffer_size 4096; rate 48000 }
-}
-pcm.!default { type plug; slave.pcm "dmix_hdmi0" }
-EOF
-    elif [ $HAS_HDMI1 -eq 1 ]; then
-        cat > "$ASOUNDRC" << 'EOF'
-pcm.dmix_hdmi1 {
-    type dmix
-    ipc_key 1027
-    slave { pcm "hw:0,7"; period_size 1024; buffer_size 4096; rate 48000 }
-}
-pcm.!default { type plug; slave.pcm "dmix_hdmi1" }
-EOF
-    elif [ $HAS_HDMI2 -eq 1 ]; then
-        cat > "$ASOUNDRC" << 'EOF'
-pcm.dmix_hdmi2 {
-    type dmix
-    ipc_key 1028
-    slave { pcm "hw:0,8"; period_size 1024; buffer_size 4096; rate 48000 }
-}
-pcm.!default { type plug; slave.pcm "dmix_hdmi2" }
-EOF
-    elif [ $HAS_ANALOG -eq 1 ]; then
-        cat > "$ASOUNDRC" << 'EOF'
-pcm.dmix_analog {
-    type dmix
-    ipc_key 1024
-    slave { pcm "hw:0,0"; period_size 1024; buffer_size 4096; rate 48000 }
-}
-pcm.!default { type plug; slave.pcm "dmix_analog" }
-EOF
+    # Determine which device to use
+    if [ $HAS_ANALOG -eq 1 ]; then
+        SINGLE_DEVICE="hw:0,0"
+        DEVICE_NAME="Analog"
+        IPC_KEY="1024"
     elif [ $HAS_USB_AUDIO -eq 1 ]; then
-        cat > "$ASOUNDRC" << 'EOF'
-pcm.dmix_usb {
-    type dmix
-    ipc_key 1025
-    slave { pcm "hw:1,0"; period_size 1024; buffer_size 4096; rate 48000 }
-}
-pcm.!default { type plug; slave.pcm "dmix_usb" }
-EOF
+        SINGLE_DEVICE="hw:1,0"
+        DEVICE_NAME="USB Audio / 3.5mm jack"
+        IPC_KEY="1025"
+    elif [ $HAS_HDMI0 -eq 1 ]; then
+        SINGLE_DEVICE="hw:0,3"
+        DEVICE_NAME="HDMI 0"
+        IPC_KEY="1026"
+    elif [ $HAS_HDMI1 -eq 1 ]; then
+        SINGLE_DEVICE="hw:0,7"
+        DEVICE_NAME="HDMI 1"
+        IPC_KEY="1027"
+    else
+        SINGLE_DEVICE="hw:0,8"
+        DEVICE_NAME="HDMI 2"
+        IPC_KEY="1028"
     fi
+
+    cat > "$ASOUNDRC" << EOF
+# ALSA config - auto-generated for single output: ${DEVICE_NAME} (${SINGLE_DEVICE})
+# dmix allows multiple audio streams to be mixed in software
+
+pcm.dmix_single {
+    type dmix
+    ipc_key ${IPC_KEY}
+    slave {
+        pcm "${SINGLE_DEVICE}"
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+        rate 48000
+    }
+}
+
+pcm.!default {
+    type plug
+    slave.pcm "dmix_single"
+}
+
+ctl.!default {
+    type hw
+    card 0
+}
+EOF
 else
     echo "WARNING: No audio devices detected, using fallback (hw:0,3)..."
     cat > "$ASOUNDRC" << 'EOF'
+# ALSA config - fallback to HDMI 0
+
 pcm.dmix_fallback {
     type dmix
     ipc_key 1026
-    slave { pcm "hw:0,3"; period_size 1024; buffer_size 4096; rate 48000 }
+    slave {
+        pcm "hw:0,3"
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+        rate 48000
+    }
 }
-pcm.!default { type plug; slave.pcm "dmix_fallback" }
+
+pcm.!default {
+    type plug
+    slave.pcm "dmix_fallback"
+}
+
+ctl.!default {
+    type hw
+    card 0
+}
 EOF
 fi
 
@@ -307,8 +375,11 @@ for i in 0 1 2; do
 done
 [ $HAS_USB_AUDIO -eq 1 ] && amixer -c 1 sset PCM unmute 100% 2>/dev/null || true
 
-# ─── Export ALSA config path ──────────────────────────────────────────────────
-export ALSA_CONFIG_PATH="$ASOUNDRC"
+# ─── Log generated ALSA config ────────────────────────────────────────────────
+# NOTE: ALSA_CONFIG_PATH stays pointed at alsa.conf (set above).
+# ALSA automatically reads .asoundrc from $HOME ($SNAP_USER_DATA in snap).
+echo "Generated .asoundrc content:"
+cat "$ASOUNDRC" | sed 's/^/    /'
 
 # ─── Wayland / Display ────────────────────────────────────────────────────────
 # snapd remaps XDG_RUNTIME_DIR for confined snaps (e.g. /run/user/0/snap.<snapname>)
