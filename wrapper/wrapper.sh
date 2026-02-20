@@ -54,6 +54,13 @@ ASOUNDRC="$SNAP_USER_DATA/.asoundrc"
 
 echo "Detecting audio devices..."
 
+# Validate that a PCM device can actually be opened for playback
+# /proc/asound/pcm may list devices that exist on the HDA codec but can't
+# produce audio (e.g. analog on HDMI-only hardware). Test with amixer.
+validate_pcm() {
+    amixer -D "$1" info >/dev/null 2>&1
+}
+
 # Auto-detect available PCM devices from /proc/asound/pcm
 HAS_ANALOG=0; HAS_USB_AUDIO=0; HAS_HDMI0=0; HAS_HDMI1=0; HAS_HDMI2=0
 
@@ -69,8 +76,31 @@ else
     echo "WARNING: /proc/asound/pcm not found"
 fi
 
+# Verify each detected device can actually be opened
+echo "Validating detected audio devices..."
+if [ $HAS_ANALOG -eq 1 ] && ! validate_pcm "hw:0,0"; then
+    echo "  hw:0,0 (analog) listed in /proc but cannot be opened, skipping"
+    HAS_ANALOG=0
+fi
+if [ $HAS_USB_AUDIO -eq 1 ] && ! validate_pcm "hw:1,0"; then
+    echo "  hw:1,0 (USB audio) listed in /proc but cannot be opened, skipping"
+    HAS_USB_AUDIO=0
+fi
+if [ $HAS_HDMI0 -eq 1 ] && ! validate_pcm "hw:0,3"; then
+    echo "  hw:0,3 (HDMI0) listed in /proc but cannot be opened, skipping"
+    HAS_HDMI0=0
+fi
+if [ $HAS_HDMI1 -eq 1 ] && ! validate_pcm "hw:0,7"; then
+    echo "  hw:0,7 (HDMI1) listed in /proc but cannot be opened, skipping"
+    HAS_HDMI1=0
+fi
+if [ $HAS_HDMI2 -eq 1 ] && ! validate_pcm "hw:0,8"; then
+    echo "  hw:0,8 (HDMI2) listed in /proc but cannot be opened, skipping"
+    HAS_HDMI2=0
+fi
+
 DEVICE_COUNT=$((HAS_ANALOG + HAS_USB_AUDIO + HAS_HDMI0 + HAS_HDMI1 + HAS_HDMI2))
-echo "Detected $DEVICE_COUNT audio output(s): analog=$HAS_ANALOG usb=$HAS_USB_AUDIO hdmi0=$HAS_HDMI0 hdmi1=$HAS_HDMI1 hdmi2=$HAS_HDMI2"
+echo "Validated $DEVICE_COUNT audio output(s): analog=$HAS_ANALOG usb=$HAS_USB_AUDIO hdmi0=$HAS_HDMI0 hdmi1=$HAS_HDMI1 hdmi2=$HAS_HDMI2"
 
 # Generate .asoundrc with dmix for each detected device
 # Each dmix MUST have a UNIQUE ipc_key for shared memory!
@@ -282,92 +312,30 @@ export ALSA_CONFIG_PATH="$ASOUNDRC"
 
 # ─── Wayland / Display ────────────────────────────────────────────────────────
 # snapd remaps XDG_RUNTIME_DIR for confined snaps (e.g. /run/user/0/snap.<snapname>)
-# The wayland plug, when connected, bind-mounts the compositor socket into this dir.
-# We trust whatever snapd sets for XDG_RUNTIME_DIR - don't override it.
+# but ubuntu-frame exposes its Wayland socket at /run/user/0/wayland-0.
+# We check the real path directly and pass the absolute socket path to Electron.
 
-echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
-echo "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>}"
+WAYLAND_SOCKET_NAME="${WAYLAND_DISPLAY:-wayland-0}"
+WAYLAND_SOCKET_PATH="/run/user/0/$WAYLAND_SOCKET_NAME"
 
-# Set WAYLAND_DISPLAY default if not set
-if [ -z "$WAYLAND_DISPLAY" ]; then
-    export WAYLAND_DISPLAY="wayland-0"
-fi
-
-# ─── Search for Wayland socket ────────────────────────────────────────────────
-# The socket could be in several locations depending on how ubuntu-frame
-# and snapd expose it. Search common paths.
-find_wayland_socket() {
-    # 1. Standard location: $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY
-    if [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
-        echo "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
-        return 0
-    fi
-    
-    # 2. Search for any wayland socket in XDG_RUNTIME_DIR
-    if [ -n "$XDG_RUNTIME_DIR" ] && [ -d "$XDG_RUNTIME_DIR" ]; then
-        local found
-        found=$(find "$XDG_RUNTIME_DIR" -maxdepth 1 -name "wayland-*" -type s 2>/dev/null | head -n 1)
-        if [ -n "$found" ]; then
-            echo "$found"
-            return 0
-        fi
-    fi
-    
-    # 3. Check /run/user/0 directly (non-snap-remapped path)
-    if [ -S "/run/user/0/$WAYLAND_DISPLAY" ]; then
-        echo "/run/user/0/$WAYLAND_DISPLAY"
-        return 0
-    fi
-    
-    # 4. Search /run/user/0 for any wayland socket
-    if [ -d "/run/user/0" ]; then
-        local found
-        found=$(find /run/user/0 -maxdepth 2 -name "wayland-*" -type s 2>/dev/null | head -n 1)
-        if [ -n "$found" ]; then
-            echo "$found"
-            return 0
-        fi
-    fi
-    
-    return 1
-}
-
-echo "Searching for Wayland socket..."
-echo "Contents of XDG_RUNTIME_DIR ($XDG_RUNTIME_DIR):"
-ls -la "$XDG_RUNTIME_DIR/" 2>/dev/null || echo "  (directory not found or not accessible)"
-echo "Contents of /run/user/0/:"
-ls -la /run/user/0/ 2>/dev/null || echo "  (directory not found or not accessible)"
+echo "Looking for Wayland socket at: $WAYLAND_SOCKET_PATH"
 
 # Wait for Wayland socket to appear (up to 60s - ubuntu-frame may take time)
 WAIT_COUNT=0
-WAYLAND_SOCKET=""
 while [ $WAIT_COUNT -lt 60 ]; do
-    WAYLAND_SOCKET=$(find_wayland_socket)
-    if [ -n "$WAYLAND_SOCKET" ]; then
+    if [ -S "$WAYLAND_SOCKET_PATH" ]; then
         break
     fi
     sleep 1
     WAIT_COUNT=$((WAIT_COUNT + 1))
-    # Print diagnostics every 10 seconds
     if [ $((WAIT_COUNT % 10)) -eq 0 ]; then
         echo "Waiting for Wayland compositor... ($WAIT_COUNT/60)"
-        echo "  XDG_RUNTIME_DIR contents:"
-        ls -la "$XDG_RUNTIME_DIR/" 2>/dev/null || echo "    (not accessible)"
-        echo "  /run/user/0 contents:"
-        ls -la /run/user/0/ 2>/dev/null || echo "    (not accessible)"
     fi
 done
 
-if [ -n "$WAYLAND_SOCKET" ]; then
-    echo "Wayland socket found at: $WAYLAND_SOCKET (after ${WAIT_COUNT}s)"
-    
-    # If the socket is not at the expected $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY,
-    # set WAYLAND_DISPLAY to the absolute path so Electron can find it
-    EXPECTED_SOCKET="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
-    if [ "$WAYLAND_SOCKET" != "$EXPECTED_SOCKET" ]; then
-        echo "Socket not at expected path, setting WAYLAND_DISPLAY to absolute path"
-        export WAYLAND_DISPLAY="$WAYLAND_SOCKET"
-    fi
+if [ -S "$WAYLAND_SOCKET_PATH" ]; then
+    echo "Wayland socket found at: $WAYLAND_SOCKET_PATH (after ${WAIT_COUNT}s)"
+    export WAYLAND_DISPLAY="$WAYLAND_SOCKET_PATH"
 else
     echo "============================================================"
     echo "ERROR: No Wayland socket found after 60 seconds!"
@@ -381,7 +349,9 @@ else
     echo ""
     echo "Debug info:"
     echo "  XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
-    ls -laR /run/user/ 2>/dev/null || echo "  /run/user/ not accessible"
+    echo "  WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>}"
+    ls -la /run/user/0/ 2>/dev/null || echo "  /run/user/0/ not accessible"
+    ls -la "$XDG_RUNTIME_DIR/" 2>/dev/null || echo "  $XDG_RUNTIME_DIR not accessible"
     echo "============================================================"
 fi
 

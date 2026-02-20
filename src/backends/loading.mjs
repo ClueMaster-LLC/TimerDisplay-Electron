@@ -43,9 +43,13 @@ async function downloadFileStream(url, filePath, headers = {}) {
 ipcMain.handle("loading:worker", async (_event, options = {}) => {
   // Check if browser supports codecs natively (passed from renderer)
   const hevcSupported = options?.hevcSupported ?? false;
-  const vp9HardwareSupported = options?.vp9HardwareSupported ?? true; // Default true for backward compat
+  // VP9: Chromium has built-in software decode (libvpx), only transcode if playback won't be smooth
+  const vp9Supported = options?.vp9Supported ?? options?.vp9HardwareSupported ?? true; // Default true - Chromium always has VP9
+  // AV1: Chromium has built-in software decode (dav1d), only transcode if playback won't be smooth
+  const av1Supported = options?.av1Supported ?? true; // Default true - Chromium always has AV1
   console.log(`Loading: HEVC native support from browser: ${hevcSupported ? 'YES' : 'NO'}`);
-  console.log(`Loading: VP9 hardware decode support: ${vp9HardwareSupported ? 'YES' : 'NO (will transcode)'}`);
+  console.log(`Loading: VP9 smooth playback support: ${vp9Supported ? 'YES (skip transcode)' : 'NO (will transcode)'}`);
+  console.log(`Loading: AV1 smooth playback support: ${av1Supported ? 'YES (skip transcode)' : 'NO (will transcode)'}`);
 
   const deviceUniqueCode = store.get("uniqueCode");
   const apiKey = store.get("APIToken");
@@ -374,18 +378,20 @@ ipcMain.handle("loading:worker", async (_event, options = {}) => {
         }
       }
 
-      // ── Transcode problematic codecs (H.265, AV1, VP9) to H.264 ──
-      // Skip transcoding if:
-      // 1. Windows AND VP9 hardware decode is available (all codecs play natively)
-      // 2. Browser reports HEVC support (VA-API working on Linux with modern GPU) - still transcode VP9/AV1
+      // ── Transcode problematic codecs to H.264 if smooth playback not possible ──
+      // HEVC: Patent-encumbered, not in stock Chromium - transcode unless VA-API/platform support detected
+      // VP9: Chromium has built-in decode (libvpx) - only transcode if smooth playback not possible
+      // AV1: Chromium has built-in decode (dav1d) - only transcode if smooth playback not possible
       const isWindows = process.platform === 'win32';
-      const needsVp9Transcode = isWindows && !vp9HardwareSupported;
-      const shouldTranscode = !isWindows || needsVp9Transcode;
+      const needsVp9Transcode = !vp9Supported;
+      const needsAv1Transcode = !av1Supported;
+      // Always check for transcoding needs (HEVC/AV1 may need it on any platform)
+      const shouldTranscode = true;
 
       if (shouldTranscode) {
         const reason = needsVp9Transcode
-          ? 'Windows with VP9 software-only decode detected, will transcode VP9 videos'
-          : 'Non-Windows platform, checking video codecs for transcoding needs...';
+          ? 'VP9 smooth playback not available, will transcode VP9 videos'
+          : 'Checking video codecs for transcoding needs (VP9 playback OK, skipping VP9)...';
         console.log(`Loading: ${reason}`);
         window.webContents.send("loading:status", { status: "Checking video codecs..." });
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -422,11 +428,11 @@ ipcMain.handle("loading:worker", async (_event, options = {}) => {
 
             // For HEVC, skip if browser reports native support
             const skipHevc = transcodeCheck.originalCodec === 'HEVC' && hevcSupported;
-            // On Windows, skip VP9 transcoding if hardware decode is available
-            const skipVp9OnWindows = transcodeCheck.originalCodec === 'VP9' && isWindows && vp9HardwareSupported;
-            // On Windows with VP9 software-only, skip non-VP9 codecs (only transcode VP9)
-            const skipNonVp9OnWindows = needsVp9Transcode && transcodeCheck.originalCodec !== 'VP9';
-            const skipThisCodec = skipHevc || skipVp9OnWindows || skipNonVp9OnWindows;
+            // VP9: Chromium has built-in decode (libvpx) - skip unless smooth playback not possible
+            const skipVp9 = transcodeCheck.originalCodec === 'VP9' && vp9Supported;
+            // AV1: Chromium has built-in decode (dav1d) - skip unless smooth playback not possible
+            const skipAv1 = transcodeCheck.originalCodec === 'AV1' && av1Supported;
+            const skipThisCodec = skipHevc || skipVp9 || skipAv1;
 
             if (transcodeCheck.needsTranscode && !skipThisCodec) {
               transcodedCount++;

@@ -314,31 +314,27 @@ export function getTranscodedFileName(originalFileName) {
  * @param {string} filePath - Path to the video file
  * @param {Object} options - Options
  * @param {boolean} options.hevcSupported - Whether browser supports HEVC natively
- * @param {boolean} options.vp9HardwareSupported - Whether VP9 has HW decode
+ * @param {boolean} options.vp9Supported - Whether VP9 playback is smooth (hardware or software)
+ * @param {boolean} options.av1Supported - Whether AV1 playback is smooth (hardware or software)
  * @param {Function} options.onProgress - Progress callback
  * @returns {Promise<string>} Path to the (possibly transcoded) file
  */
 export async function transcodeIfNeeded(filePath, options = {}) {
-  const { hevcSupported = false, vp9HardwareSupported = true, onProgress } = options;
-
-  // On Windows, most codecs play natively
-  if (config.isWindows) {
-    // Only transcode VP9 on Windows if no hardware support
-    const check = await needsTranscoding(filePath);
-    if (!check.needsTranscode) return filePath;
-    if (check.originalCodec === 'HEVC' && hevcSupported) return filePath;
-    if (check.originalCodec === 'VP9' && vp9HardwareSupported) return filePath;
-    if (check.originalCodec === 'AV1') return filePath; // AV1 plays natively on modern Windows
-    // Need to transcode VP9 without HW
-  } else {
-    // Linux: transcode HEVC (unless supported), VP9, AV1
-    const check = await needsTranscoding(filePath);
-    if (!check.needsTranscode) return filePath;
-    if (check.originalCodec === 'HEVC' && hevcSupported) return filePath;
-  }
+  const { hevcSupported = false, vp9Supported = true, av1Supported = true, onProgress } = options;
 
   const check = await needsTranscoding(filePath);
   if (!check.needsTranscode) return filePath;
+
+  // HEVC: skip if browser/platform supports it natively
+  if (check.originalCodec === 'HEVC' && hevcSupported) return filePath;
+
+  // VP9: Chromium has built-in software decode (libvpx) on all platforms.
+  // Only transcode if smooth playback is not possible.
+  if (check.originalCodec === 'VP9' && vp9Supported) return filePath;
+
+  // AV1: Chromium has built-in software decode (dav1d) on all platforms.
+  // Only transcode if smooth playback is not possible.
+  if (check.originalCodec === 'AV1' && av1Supported) return filePath;
 
   console.log(`Transcoder: ${check.originalCodec} → H.264: ${path.basename(filePath)}`);
 

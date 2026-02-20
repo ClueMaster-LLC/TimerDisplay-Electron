@@ -1280,9 +1280,14 @@ app.whenReady().then(async () => {
     return new Promise((resolve) => {
       const req = https.request({
         hostname: "api.snapcraft.io",
-        path: `/v2/snaps/info/${encodeURIComponent(snapName)}`,
+        path: `/v2/snaps/info/${encodeURIComponent(snapName)}?fields=channel-map`,
         method: "GET",
-        headers: { "Snap-Device-Series": "16", "Snap-Device-Architecture": snapArch },
+        headers: {
+          "Snap-Device-Series": "16",
+          "Snap-Device-Architecture": snapArch,
+          "Accept": "application/json",
+          "User-Agent": `cluemaster-timer/${currentVersion}`,
+        },
         timeout: 10000,
       }, (res) => {
         let data = "";
