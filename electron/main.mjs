@@ -464,7 +464,7 @@ if (envConfig.isLinux || envConfig.isSnap) {
   // Disable GPU driver bug workarounds for Intel
   app.commandLine.appendSwitch('disable-gpu-driver-bug-workarounds');
 
-  // VA-API and HEVC support
+  // VA-API and HEVC support (do NOT include WaylandWindowDecorations - disabled below for ubuntu-frame)
   app.commandLine.appendSwitch('enable-features', [
     'VaapiVideoDecoder',
     'VaapiVideoEncoder',
@@ -473,7 +473,7 @@ if (envConfig.isLinux || envConfig.isSnap) {
     'AcceleratedVideoDecodeLinuxZeroCopyGL',
     'VaapiIgnoreDriverChecks',
     'PlatformHEVCDecoderSupport',
-    'WaylandWindowDecorations',
+    'PlatformHEVCEncoderSupport',
   ].join(','));
 }
 
@@ -490,17 +490,38 @@ if (envConfig.isSnap) {
   app.commandLine.appendSwitch('disable-dev-shm-usage');
   app.commandLine.appendSwitch('in-process-gpu');
 
-  // Disable D-Bus features that require session bus (not available for daemons)
-  app.commandLine.appendSwitch('disable-features',
-    'HardwareMediaKeyHandling,' +
-    'MediaSessionService,' +
-    'SystemNotifications,' +
-    'GlobalMediaControls,' +
-    'GlobalMediaControlsForCast,' +
-    'GlobalMediaControlsPictureInPicture,' +
-    'AudioServiceOutOfProcess,' +
-    'MediaRouter'
-  );
+  // Use ANGLE/GLES for zero-copy VA-API video decode path
+  app.commandLine.appendSwitch('use-gl', 'angle');
+  app.commandLine.appendSwitch('use-angle', 'gles');
+
+  // Prevent Chromium from throttling when it thinks window lacks focus (kiosk mode)
+  app.commandLine.appendSwitch('disable-background-timer-throttling');
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
+  // Disable accessibility renderer (CPU-heavy, not needed for kiosk)
+  app.commandLine.appendSwitch('force-renderer-accessibility', 'off');
+
+  // CRITICAL: Single disable-features call - appendSwitch REPLACES previous values for same key,
+  // so all disabled features MUST be in one call to avoid overriding each other
+  app.commandLine.appendSwitch('disable-features', [
+    // D-Bus features (not available for snap daemons, causes errors)
+    'HardwareMediaKeyHandling',
+    'MediaSessionService',
+    'SystemNotifications',
+    'GlobalMediaControls',
+    'GlobalMediaControlsForCast',
+    'GlobalMediaControlsPictureInPicture',
+    'AudioServiceOutOfProcess',
+    'MediaRouter',
+    // Accessibility features (CPU overhead, not needed for kiosk display)
+    'Accessibility',
+    'AccessibilityARIAVirtualContent',
+    'AccessibilityObjectModel',
+    // Chrome OS direct decoder interferes with VA-API on Linux
+    'UseChromeOSDirectVideoDecoder',
+    // Client-side decorations cause offset issues with ubuntu-frame 22
+    'WaylandWindowDecorations',
+  ].join(','));
 
   // Disable additional D-Bus dependent services
   app.commandLine.appendSwitch('disable-breakpad');
@@ -510,9 +531,6 @@ if (envConfig.isSnap) {
   app.commandLine.appendSwitch('disable-sync');
   app.commandLine.appendSwitch('disable-dbus');
 
-  // CRITICAL: Disable client-side decorations for ubuntu-frame compatibility
-  app.commandLine.appendSwitch('disable-features', 'WaylandWindowDecorations');
-
   // Audio configuration for SNAP/Ubuntu Core
   app.commandLine.appendSwitch('alsa-output-device', 'default');
   app.commandLine.appendSwitch('audio-buffer-size', '4096');
@@ -520,6 +538,7 @@ if (envConfig.isSnap) {
   console.log('SNAP detected: Chromium sandbox disabled (running as daemon)');
   console.log('SNAP detected: Wayland/Ozone platform enabled');
   console.log('SNAP detected: Hardware video decode enabled (VA-API)');
+  console.log('SNAP detected: GL backend: ANGLE/GLES (zero-copy VA-API path)');
 }
 
 app.whenReady().then(async () => {
@@ -540,8 +559,8 @@ app.whenReady().then(async () => {
   });
 
   app.commandLine.appendSwitch("disable-http-cache");
-  app.commandLine.appendSwitch("disable-background-timer-throttling");
-  app.commandLine.appendSwitch("disable-renderer-backgrounding");
+  // Note: disable-background-timer-throttling and disable-renderer-backgrounding
+  // are set before app.whenReady() in the SNAP block above (must be set early to take effect)
 
   protocol.handle("media", async (request) => {
     try {
