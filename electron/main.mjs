@@ -82,6 +82,7 @@ function createWindow() {
         nodeIntegration: false,
         contextIsolation: true,
         webSecurity: true,
+        sandbox: !envConfig.isSnap, // Disable sandbox for SNAP daemon (runs as root)
         preload: path.join(__dirname, "preload.cjs"),
       },
     });
@@ -109,6 +110,7 @@ function createWindow() {
         nodeIntegration: false,
         contextIsolation: true,
         webSecurity: true,
+        sandbox: !envConfig.isSnap, // Disable sandbox for SNAP daemon (runs as root)
         preload: path.join(__dirname, "preload.cjs"),
       },
     });
@@ -134,15 +136,70 @@ function createWindow() {
       frame: true,
       resizable: true,
       show: false,
+      autoHideMenuBar: false,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
         webSecurity: true,
+        sandbox: !envConfig.isSnap, // Disable sandbox for SNAP daemon (runs as root)
         preload: path.join(__dirname, "preload.cjs"),
       },
     });
 
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+
+    // Create menu with debug options (matches VideoPlayer PROD template)
+    const prodTemplate = [
+      {
+        label: 'File',
+        submenu: [
+          { role: 'quit' }
+        ]
+      },
+      {
+        label: 'View',
+        submenu: [
+          {
+            role: 'togglefullscreen',
+            accelerator: 'F11'
+          }
+        ]
+      },
+      {
+        label: 'Debug Options',
+        submenu: [
+          {
+            label: 'Toggle Debug Overlay',
+            accelerator: 'CmdOrCtrl+Shift+D',
+            click: () => {
+              mainWindow.webContents.send('debug:toggle-overlay');
+            }
+          },
+          { type: 'separator' },
+          {
+            label: 'Test Screenshot Capture',
+            accelerator: 'CmdOrCtrl+Shift+S',
+            click: async () => {
+              try {
+                console.log('Screenshot Test: Capturing...');
+                const { captureAndUpload } = await import('../src/backends/screenshot-handler.mjs');
+                const result = await captureAndUpload();
+                console.log('Screenshot Test: Result -', result);
+                mainWindow.webContents.send('screenshot-test-result', result);
+              } catch (err) {
+                console.error('Screenshot Test: Failed -', err.message);
+                mainWindow.webContents.send('screenshot-test-result', {
+                  success: false,
+                  error: err.message,
+                });
+              }
+            }
+          }
+        ]
+      }
+    ];
+    const prodMenu = Menu.buildFromTemplate(prodTemplate);
+    Menu.setApplicationMenu(prodMenu);
 
     mainWindow.once("ready-to-show", () => {
       mainWindow.maximize();
@@ -186,6 +243,7 @@ function createWindow() {
         if (isFullscreen) {
           mainWindow.setKiosk(false);
           mainWindow.setFullScreen(false);
+          mainWindow.setMenuBarVisibility(true);
           mainWindow.maximize();
           mainWindow.setAlwaysOnTop(false);
           // restore cursor when leaving fullscreen/kiosk: remove hide CSS and force show
@@ -204,6 +262,7 @@ function createWindow() {
               .catch(() => { });
           }
         } else {
+          mainWindow.setMenuBarVisibility(false);
           mainWindow.setKiosk(true);
           mainWindow.setFullScreen(true);
           mainWindow.setAlwaysOnTop(true, "screen-saver", 1);
@@ -226,6 +285,7 @@ function createWindow() {
 
     // also respond to native fullscreen events and HTML5 fullscreen
     mainWindow.on("enter-full-screen", () => {
+      mainWindow.setMenuBarVisibility(false);
       mainWindow.setAlwaysOnTop(true, "screen-saver", 1);
       if (_cursorShowKey) {
         mainWindow.webContents
@@ -243,6 +303,7 @@ function createWindow() {
     });
 
     mainWindow.on("leave-full-screen", () => {
+      mainWindow.setMenuBarVisibility(true);
       mainWindow.setAlwaysOnTop(false);
       if (_cursorHideKey) {
         mainWindow.webContents
