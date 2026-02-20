@@ -162,7 +162,6 @@ export default function Game({ gameInfo }) {
 
     gameActions.hideClue();
     gameActions.pauseTimer();
-    pauseMainVideo();
     stopBackgroundMusic();
     currentClueRef.current = null;
 
@@ -355,7 +354,6 @@ export default function Game({ gameInfo }) {
 
   const handleTimerEnd = async () => {
     gameActions.pauseTimer();
-    pauseMainVideo();
     stopBackgroundMusic();
 
     window.dispatchEvent(
