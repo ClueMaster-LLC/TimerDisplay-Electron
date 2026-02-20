@@ -7,6 +7,7 @@ import mime from "mime";
 import { exec } from "child_process";
 import { promisify } from "util";
 import crypto from "crypto";
+import https from "https";
 // electron-updater is a CommonJS module; import default and destructure
 import updaterPkg from "electron-updater";
 const { autoUpdater } = updaterPkg;
@@ -1163,6 +1164,113 @@ app.whenReady().then(async () => {
     return !!process.env.SNAP;
   };
 
+  /**
+   * Query the Snap Store public API to check if a newer version of this snap
+   * is available. Uses only HTTPS (requires `network` plug) — no snapd socket
+   * or snap CLI needed, so it works inside strict confinement.
+   *
+   * Returns { updateAvailable, currentVersion, storeVersion, channel, error? }
+   */
+  const checkSnapStoreUpdates = () => {
+    const snapName = process.env.SNAP_NAME;
+    const currentVersion = process.env.SNAP_VERSION;
+    const currentRevision = process.env.SNAP_REVISION;
+
+    if (!snapName || !currentVersion) {
+      return Promise.resolve({
+        updateAvailable: false,
+        currentVersion: currentVersion || "unknown",
+        error: "SNAP environment variables not set",
+      });
+    }
+
+    // Map Node.js arch names to Snap Store architecture identifiers
+    const archMap = { x64: "amd64", arm64: "arm64", arm: "armhf", ia32: "i386" };
+    const snapArch = archMap[process.arch] || "amd64";
+
+    // Dev builds typically track latest/edge, prod tracks latest/stable
+    const preferredChannel = envConfig.isDevelopment ? "latest/edge" : "latest/stable";
+
+    return new Promise((resolve) => {
+      const options = {
+        hostname: "api.snapcraft.io",
+        path: `/v2/snaps/info/${encodeURIComponent(snapName)}`,
+        method: "GET",
+        headers: {
+          "Snap-Device-Series": "16",
+          "Snap-Device-Architecture": snapArch,
+          "User-Agent": `${envConfig.productName || "ClueMaster-Timer"}/${currentVersion}`,
+        },
+        timeout: 10000,
+      };
+
+      const req = https.request(options, (res) => {
+        let data = "";
+        res.on("data", (chunk) => { data += chunk; });
+        res.on("end", () => {
+          try {
+            if (res.statusCode !== 200) {
+              resolve({ updateAvailable: false, currentVersion, error: `Snap Store returned HTTP ${res.statusCode}` });
+              return;
+            }
+
+            const json = JSON.parse(data);
+            const channelMap = json["channel-map"] || [];
+
+            // Find the entry matching our preferred channel and architecture
+            let match = channelMap.find(
+              (entry) => entry.channel && entry.channel.name === preferredChannel && entry.channel.architecture === snapArch
+            );
+
+            // Fallback: try latest/stable if preferred channel wasn't found
+            if (!match && preferredChannel !== "latest/stable") {
+              match = channelMap.find(
+                (entry) => entry.channel && entry.channel.name === "latest/stable" && entry.channel.architecture === snapArch
+              );
+            }
+
+            // Second fallback: take the first entry for our architecture (any channel)
+            if (!match) {
+              match = channelMap.find(
+                (entry) => entry.channel && entry.channel.architecture === snapArch
+              );
+            }
+
+            if (match) {
+              const storeVersion = match.version;
+              const storeRevision = match.revision;
+              // For YYYY.MM.DD format, string comparison is lexicographically correct
+              const updateAvailable = storeVersion !== currentVersion;
+              resolve({
+                updateAvailable,
+                currentVersion,
+                storeVersion,
+                storeRevision,
+                currentRevision,
+                channel: match.channel.name,
+              });
+            } else {
+              resolve({ updateAvailable: false, currentVersion, error: "Snap not found in any store channel" });
+            }
+          } catch (e) {
+            resolve({ updateAvailable: false, currentVersion, error: `Parse error: ${e.message}` });
+          }
+        });
+      });
+
+      req.on("error", (e) => {
+        resolve({ updateAvailable: false, currentVersion, error: `Network error: ${e.message}` });
+      });
+
+      req.on("timeout", () => {
+        req.destroy();
+        resolve({ updateAvailable: false, currentVersion, error: "Snap Store request timed out (10s)" });
+      });
+
+      req.end();
+    });
+  };
+
   // ─── System/Debug IPC handlers ─────────────────────────────────────────────
   // getVideoInfo via ffprobe (used by debug overlay)
   ipcMain.handle("system:get-video-info", async (_event, mediaPath) => {
@@ -1254,12 +1362,46 @@ app.whenReady().then(async () => {
       }
     };
     try {
-      // If running on Ubuntu Core as snap, snapd handles updates externally via snap refresh.
-      // The snap CLI is not accessible from inside strict confinement, so we simply report
-      // that updates are managed by the system and let the splash screen proceed.
+      // If running as a snap, query the Snap Store to check for newer versions.
+      // We cannot trigger installs from inside strict confinement — snapd handles
+      // that on its own refresh schedule — but we CAN tell the user whether an
+      // update is available by comparing SNAP_VERSION against the store.
       if (isUbuntuCoreSnap()) {
-        console.log("UPDATER: Running as snap - updates handled automatically by snapd");
-        send("not-available", { message: "Snap updates are managed automatically by snapd" });
+        send("checking");
+        console.log(`UPDATER: Snap ${process.env.SNAP_NAME} v${process.env.SNAP_VERSION} (rev ${process.env.SNAP_REVISION || "?"}) — querying Snap Store...`);
+
+        try {
+          const result = await checkSnapStoreUpdates();
+          console.log("UPDATER: Snap Store check result:", JSON.stringify(result));
+
+          if (result.error) {
+            // Store query failed (network down, snap not published, etc.)
+            console.log("UPDATER: Snap Store query error:", result.error);
+            send("not-available", {
+              message: "Unable to check Snap Store \u2014 snapd will handle updates automatically",
+              info: { version: result.currentVersion },
+            });
+          } else if (result.updateAvailable) {
+            console.log(`UPDATER: Snap update available: ${result.currentVersion} \u2192 ${result.storeVersion} (${result.channel})`);
+            send("not-available", {
+              message: `Update available (${result.storeVersion}) \u2014 snapd will install automatically`,
+              info: { version: result.storeVersion },
+            });
+          } else {
+            console.log("UPDATER: Snap is up to date:", result.currentVersion);
+            send("not-available", {
+              message: "No updates available.",
+              info: { version: result.currentVersion },
+            });
+          }
+        } catch (e) {
+          console.log("UPDATER: Snap Store check exception:", e.message);
+          send("not-available", {
+            message: "Unable to check Snap Store \u2014 snapd will handle updates automatically",
+            info: { version: process.env.SNAP_VERSION || "unknown" },
+          });
+        }
+
         return { ok: true, snap: true };
       }
 

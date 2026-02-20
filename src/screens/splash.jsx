@@ -60,7 +60,7 @@ export default function Splash() {
             } else if (t === "not-available") {
               const remoteVersion = payload.info && payload.info.version ? payload.info.version : "";
               if (remoteVersion) setLatestVersion(remoteVersion);
-              setUpdateStatus("No updates available.");
+              setUpdateStatus(payload.message || "No updates available.");
               setUpdateInProgress(false);
               updateInProgressRef.current = false;
               setUpdatesChecked(true);

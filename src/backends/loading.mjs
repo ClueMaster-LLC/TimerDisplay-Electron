@@ -75,45 +75,46 @@ ipcMain.handle("loading:worker", async (_event, options = {}) => {
         throw new Error(`API Error: ${roomInfoAPIRequest.status}`);
       }
 
+      const roomMediaFilesDirectory = path.join(
+        applicationData,
+        "media-files",
+        "room-media-files"
+      );
+      const musicFilesDirectory = path.join(
+        roomMediaFilesDirectory,
+        "music-files"
+      );
+      const imageFilesDirectory = path.join(
+        roomMediaFilesDirectory,
+        "idleScreen-media"
+      );
+      const videoFilesDirectory = path.join(
+        roomMediaFilesDirectory,
+        "gameBackground-media"
+      );
+      const introMediaDirectory = path.join(
+        roomMediaFilesDirectory,
+        "intro-media"
+      );
+      const successMediaDirectory = path.join(
+        roomMediaFilesDirectory,
+        "success-media"
+      );
+      const failMediaDirectory = path.join(
+        roomMediaFilesDirectory,
+        "fail-media"
+      );
+      const clueMediaDirectory = path.join(
+        applicationData,
+        "media-files",
+        "clue-media-files"
+      );
+      const customClueMediaDirectory = path.join(
+        roomMediaFilesDirectory,
+        "custom-clue-media"
+      );
+
       if (roomInfoAPIRequest.data !== "No Configurations Files Found") {
-        const roomMediaFilesDirectory = path.join(
-          applicationData,
-          "media-files",
-          "room-media-files"
-        );
-        const musicFilesDirectory = path.join(
-          roomMediaFilesDirectory,
-          "music-files"
-        );
-        const imageFilesDirectory = path.join(
-          roomMediaFilesDirectory,
-          "idleScreen-media"
-        );
-        const videoFilesDirectory = path.join(
-          roomMediaFilesDirectory,
-          "gameBackground-media"
-        );
-        const introMediaDirectory = path.join(
-          roomMediaFilesDirectory,
-          "intro-media"
-        );
-        const successMediaDirectory = path.join(
-          roomMediaFilesDirectory,
-          "success-media"
-        );
-        const failMediaDirectory = path.join(
-          roomMediaFilesDirectory,
-          "fail-media"
-        );
-        const clueMediaDirectory = path.join(
-          applicationData,
-          "media-files",
-          "clue-media-files"
-        );
-        const customClueMediaDirectory = path.join(
-          roomMediaFilesDirectory,
-          "custom-clue-media"
-        );
 
         const roomInfoAPIData = roomInfoAPIRequest.data;
         const musicMediaFile = roomInfoAPIData.MusicPath;
