@@ -45,7 +45,7 @@ apps:
       - hardware-observe
       - shutdown
       - mount-observe
-      - snapd-control
+      # - snapd-control
 
     environment:
       # Data directory

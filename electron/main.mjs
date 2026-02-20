@@ -773,6 +773,7 @@ app.whenReady().then(async () => {
               }
             }
           },
+          { type: 'separator' },
           {
             label: 'Test Screenshot Capture',
             accelerator: 'CmdOrCtrl+Shift+S',
@@ -1697,11 +1698,46 @@ app.whenReady().then(async () => {
     
     console.log("UPDATER: Daily background update check scheduled (every 24 hours)");
   } else if (app.isPackaged && isUbuntuCoreSnap()) {
+    /**
+     * Check if a game is currently in progress by reading gameInfo from electron-store.
+     * A game is considered active when gameStatus is:
+     *   1 = running, 4 = paused, 5 = fail ending, 6 = win ending, 7 = starting/intro
+     * Safe to refresh when:
+     *   null/undefined = no game data, 2 = stopped/idle, 3 = reset
+     *
+     * CRITICAL: This app is the escape room's timer AND the only communication channel
+     * between the Game Master and players. A refresh mid-game would leave players
+     * stranded with no timer and no way to receive help clues.
+     */
+    const isGameInProgress = async () => {
+      try {
+        const stateModule = await import("../src/backends/state.mjs");
+        const store = stateModule.default;
+        const gameInfo = store.get("gameInfo");
+        if (!gameInfo || !gameInfo.gameStatus) return false;
+        // Active game statuses: 1=running, 4=paused, 5=fail end, 6=win end, 7=intro/start
+        const activeStatuses = [1, 4, 5, 6, 7];
+        return activeStatuses.includes(gameInfo.gameStatus);
+      } catch (e) {
+        // If we can't read game state, err on the side of caution — don't refresh
+        console.log("UPDATER: Unable to read game state, blocking refresh as precaution:", e.message);
+        return true;
+      }
+    };
+
     // Reusable function to trigger a snap refresh via snapd.
     // Called by the background timer and the on-demand IPC handler.
-    const triggerSnapRefresh = async () => {
+    // Will NOT refresh if a game is in progress unless force=true.
+    const triggerSnapRefresh = async (options = {}) => {
+      const { force = false } = options;
       const snapName = process.env.SNAP_NAME;
       if (!snapName) return { ok: false, error: "SNAP_NAME not set" };
+
+      // Guard: never refresh during an active game unless explicitly forced
+      if (!force && await isGameInProgress()) {
+        console.log("UPDATER: Snap refresh BLOCKED — game is in progress");
+        return { ok: false, blocked: true, reason: "Game in progress" };
+      }
 
       console.log("UPDATER: Triggering snap refresh check for", snapName);
       try {
@@ -1729,12 +1765,15 @@ app.whenReady().then(async () => {
     };
 
     // On-demand snap refresh — can be triggered from renderer or future backend API
-    ipcMain.handle("app-snap-refresh", async () => {
-      console.log("UPDATER: On-demand snap refresh requested");
-      return await triggerSnapRefresh();
+    // Accepts { force: true } to override the game-in-progress guard
+    ipcMain.handle("app-snap-refresh", async (_event, opts) => {
+      const force = opts && opts.force;
+      console.log(`UPDATER: On-demand snap refresh requested (force=${!!force})`);
+      return await triggerSnapRefresh({ force });
     });
 
     // Background snap update check — queries snapd every 24 hours
+    // Automatically skips if a game is in progress
     const SNAP_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
     backgroundUpdateInterval = setInterval(async () => {
       await triggerSnapRefresh();

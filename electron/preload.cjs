@@ -132,7 +132,7 @@ contextBridge.exposeInMainWorld("StoreBackend", {
 contextBridge.exposeInMainWorld("UpdaterBackend", {
   checkForUpdates: (opts) => ipcRenderer.invoke("app-check-for-updates", opts),
   getUpdateRepo: () => ipcRenderer.invoke("app-get-update-repo"),
-  triggerSnapRefresh: () => ipcRenderer.invoke("app-snap-refresh"),
+  triggerSnapRefresh: (opts) => ipcRenderer.invoke("app-snap-refresh", opts),
   onUpdateEvent: (callback) => {
     const listener = (_event, payload) => {
       callback(payload);
