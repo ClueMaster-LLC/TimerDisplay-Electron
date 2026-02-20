@@ -46,6 +46,7 @@ apps:
       - shutdown
       - removable-media
       - mount-observe
+      - snapd-control
 
     environment:
       # Data directory

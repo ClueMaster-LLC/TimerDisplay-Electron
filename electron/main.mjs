@@ -7,6 +7,7 @@ import mime from "mime";
 import { exec } from "child_process";
 import { promisify } from "util";
 import crypto from "crypto";
+import http from "http";
 import https from "https";
 // electron-updater is a CommonJS module; import default and destructure
 import updaterPkg from "electron-updater";
@@ -1165,108 +1166,143 @@ app.whenReady().then(async () => {
   };
 
   /**
-   * Query the Snap Store public API to check if a newer version of this snap
-   * is available. Uses only HTTPS (requires `network` plug) — no snapd socket
-   * or snap CLI needed, so it works inside strict confinement.
+   * Make an HTTP request to the local snapd REST API over its Unix socket.
+   * Requires the `snapd-control` interface to be connected.
    *
-   * Returns { updateAvailable, currentVersion, storeVersion, channel, error? }
+   * @param {string} method - HTTP method (GET, POST, etc.)
+   * @param {string} apiPath - API path e.g. "/v2/snaps/mysnap"
+   * @param {object|null} body - JSON body for POST requests
+   * @param {number} timeout - Timeout in ms (default 30s, refreshes can be slow)
+   * @returns {Promise<{ok: boolean, status: number, data: object, error?: string}>}
    */
-  const checkSnapStoreUpdates = () => {
-    const snapName = process.env.SNAP_NAME;
-    const currentVersion = process.env.SNAP_VERSION;
-    const currentRevision = process.env.SNAP_REVISION;
-
-    if (!snapName || !currentVersion) {
-      return Promise.resolve({
-        updateAvailable: false,
-        currentVersion: currentVersion || "unknown",
-        error: "SNAP environment variables not set",
-      });
-    }
-
-    // Map Node.js arch names to Snap Store architecture identifiers
-    const archMap = { x64: "amd64", arm64: "arm64", arm: "armhf", ia32: "i386" };
-    const snapArch = archMap[process.arch] || "amd64";
-
-    // Dev builds typically track latest/edge, prod tracks latest/stable
-    const preferredChannel = envConfig.isDevelopment ? "latest/edge" : "latest/stable";
-
+  const snapdRequest = (method, apiPath, body = null, timeout = 30000) => {
     return new Promise((resolve) => {
+      const postData = body ? JSON.stringify(body) : null;
       const options = {
-        hostname: "api.snapcraft.io",
-        path: `/v2/snaps/info/${encodeURIComponent(snapName)}`,
-        method: "GET",
+        socketPath: "/run/snapd.socket",
+        path: apiPath,
+        method,
         headers: {
-          "Snap-Device-Series": "16",
-          "Snap-Device-Architecture": snapArch,
-          "User-Agent": `${envConfig.productName || "ClueMaster-Timer"}/${currentVersion}`,
+          "Content-Type": "application/json",
+          ...(postData ? { "Content-Length": Buffer.byteLength(postData) } : {}),
         },
-        timeout: 10000,
+        timeout,
       };
 
-      const req = https.request(options, (res) => {
-        let data = "";
-        res.on("data", (chunk) => { data += chunk; });
+      const req = http.request(options, (res) => {
+        let raw = "";
+        res.on("data", (chunk) => { raw += chunk; });
         res.on("end", () => {
           try {
-            if (res.statusCode !== 200) {
-              resolve({ updateAvailable: false, currentVersion, error: `Snap Store returned HTTP ${res.statusCode}` });
-              return;
-            }
-
-            const json = JSON.parse(data);
-            const channelMap = json["channel-map"] || [];
-
-            // Find the entry matching our preferred channel and architecture
-            let match = channelMap.find(
-              (entry) => entry.channel && entry.channel.name === preferredChannel && entry.channel.architecture === snapArch
-            );
-
-            // Fallback: try latest/stable if preferred channel wasn't found
-            if (!match && preferredChannel !== "latest/stable") {
-              match = channelMap.find(
-                (entry) => entry.channel && entry.channel.name === "latest/stable" && entry.channel.architecture === snapArch
-              );
-            }
-
-            // Second fallback: take the first entry for our architecture (any channel)
-            if (!match) {
-              match = channelMap.find(
-                (entry) => entry.channel && entry.channel.architecture === snapArch
-              );
-            }
-
-            if (match) {
-              const storeVersion = match.version;
-              const storeRevision = match.revision;
-              // For YYYY.MM.DD format, string comparison is lexicographically correct
-              const updateAvailable = storeVersion !== currentVersion;
-              resolve({
-                updateAvailable,
-                currentVersion,
-                storeVersion,
-                storeRevision,
-                currentRevision,
-                channel: match.channel.name,
-              });
-            } else {
-              resolve({ updateAvailable: false, currentVersion, error: "Snap not found in any store channel" });
-            }
+            const data = JSON.parse(raw);
+            resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, data });
           } catch (e) {
-            resolve({ updateAvailable: false, currentVersion, error: `Parse error: ${e.message}` });
+            resolve({ ok: false, status: res.statusCode, data: null, error: `JSON parse error: ${e.message}` });
           }
         });
       });
 
       req.on("error", (e) => {
-        resolve({ updateAvailable: false, currentVersion, error: `Network error: ${e.message}` });
+        // EACCES / ENOENT = snapd-control interface not connected
+        const hint = e.code === "EACCES" || e.code === "ENOENT"
+          ? " (is the snapd-control interface connected?)"
+          : "";
+        resolve({ ok: false, status: 0, data: null, error: `${e.message}${hint}` });
       });
 
       req.on("timeout", () => {
         req.destroy();
-        resolve({ updateAvailable: false, currentVersion, error: "Snap Store request timed out (10s)" });
+        resolve({ ok: false, status: 0, data: null, error: `Request timed out (${timeout}ms)` });
       });
 
+      if (postData) req.write(postData);
+      req.end();
+    });
+  };
+
+  /**
+   * Poll a snapd async change until it reaches a terminal status.
+   * Snapd POST operations (like refresh) return a change ID that must be polled.
+   *
+   * @param {string} changeId - The snapd change ID to poll
+   * @param {function} onProgress - Callback for progress updates (0-100)
+   * @returns {Promise<{ok: boolean, status: string, error?: string}>}
+   */
+  const pollSnapdChange = async (changeId, onProgress) => {
+    const MAX_POLLS = 180;  // 15 minutes max (180 * 5s)
+    const POLL_INTERVAL = 5000;
+
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+
+      const resp = await snapdRequest("GET", `/v2/changes/${changeId}`);
+      if (!resp.ok || !resp.data || !resp.data.result) {
+        return { ok: false, status: "error", error: resp.error || "Failed to poll change status" };
+      }
+
+      const change = resp.data.result;
+      const changeStatus = change.status;  // "Do", "Done", "Error", "Abort", etc.
+
+      // Calculate progress from tasks
+      if (change.tasks && change.tasks.length > 0 && onProgress) {
+        const doneTasks = change.tasks.filter((t) => t.status === "Done").length;
+        const pct = Math.floor((doneTasks / change.tasks.length) * 100);
+        onProgress(pct);
+      }
+
+      if (changeStatus === "Done") {
+        return { ok: true, status: "Done" };
+      } else if (changeStatus === "Error" || changeStatus === "Abort" || changeStatus === "Hold") {
+        const errMsg = change.err || `Change ended with status: ${changeStatus}`;
+        return { ok: false, status: changeStatus, error: errMsg };
+      }
+      // Otherwise still in progress ("Do", "Doing", "Wait"), keep polling
+    }
+    return { ok: false, status: "timeout", error: "Snap refresh timed out after 15 minutes" };
+  };
+
+  /**
+   * Fallback: Query the public Snap Store HTTP API to check if a newer version
+   * exists, without being able to trigger a refresh. Used when snapd-control
+   * is not connected.
+   */
+  const checkSnapStoreUpdates = () => {
+    const snapName = process.env.SNAP_NAME;
+    const currentVersion = process.env.SNAP_VERSION;
+    if (!snapName || !currentVersion) {
+      return Promise.resolve({ updateAvailable: false, currentVersion: currentVersion || "unknown", error: "SNAP env not set" });
+    }
+    const archMap = { x64: "amd64", arm64: "arm64", arm: "armhf", ia32: "i386" };
+    const snapArch = archMap[process.arch] || "amd64";
+    const preferredChannel = envConfig.isDevelopment ? "latest/edge" : "latest/stable";
+
+    return new Promise((resolve) => {
+      const req = https.request({
+        hostname: "api.snapcraft.io",
+        path: `/v2/snaps/info/${encodeURIComponent(snapName)}`,
+        method: "GET",
+        headers: { "Snap-Device-Series": "16", "Snap-Device-Architecture": snapArch },
+        timeout: 10000,
+      }, (res) => {
+        let data = "";
+        res.on("data", (c) => { data += c; });
+        res.on("end", () => {
+          try {
+            if (res.statusCode !== 200) { resolve({ updateAvailable: false, currentVersion, error: `HTTP ${res.statusCode}` }); return; }
+            const channelMap = JSON.parse(data)["channel-map"] || [];
+            let m = channelMap.find((e) => e.channel?.name === preferredChannel && e.channel?.architecture === snapArch);
+            if (!m) m = channelMap.find((e) => e.channel?.name === "latest/stable" && e.channel?.architecture === snapArch);
+            if (!m) m = channelMap.find((e) => e.channel?.architecture === snapArch);
+            if (m) {
+              resolve({ updateAvailable: m.version !== currentVersion, currentVersion, storeVersion: m.version, channel: m.channel.name });
+            } else {
+              resolve({ updateAvailable: false, currentVersion, error: "Snap not found in store" });
+            }
+          } catch (e) { resolve({ updateAvailable: false, currentVersion, error: e.message }); }
+        });
+      });
+      req.on("error", (e) => resolve({ updateAvailable: false, currentVersion, error: e.message }));
+      req.on("timeout", () => { req.destroy(); resolve({ updateAvailable: false, currentVersion, error: "timeout" }); });
       req.end();
     });
   };
@@ -1362,47 +1398,113 @@ app.whenReady().then(async () => {
       }
     };
     try {
-      // If running as a snap, query the Snap Store to check for newer versions.
-      // We cannot trigger installs from inside strict confinement — snapd handles
-      // that on its own refresh schedule — but we CAN tell the user whether an
-      // update is available by comparing SNAP_VERSION against the store.
+      // ─── Snap update flow ────────────────────────────────────────────────
+      // Strategy: Try the local snapd REST API (requires snapd-control interface).
+      // If that fails (interface not connected), fall back to the public Snap Store
+      // HTTP API for a read-only version comparison.
       if (isUbuntuCoreSnap()) {
+        const snapName = process.env.SNAP_NAME || "cluemaster-mediadisplay-core";
+        const currentVersion = process.env.SNAP_VERSION || "unknown";
         send("checking");
-        console.log(`UPDATER: Snap ${process.env.SNAP_NAME} v${process.env.SNAP_VERSION} (rev ${process.env.SNAP_REVISION || "?"}) — querying Snap Store...`);
+        console.log(`UPDATER: Snap ${snapName} v${currentVersion} (rev ${process.env.SNAP_REVISION || "?"}) — checking for updates...`);
 
-        try {
-          const result = await checkSnapStoreUpdates();
-          console.log("UPDATER: Snap Store check result:", JSON.stringify(result));
+        // ── Step 1: Try snapd socket (full control) ──────────────────────
+        const snapInfo = await snapdRequest("GET", `/v2/snaps/${encodeURIComponent(snapName)}`);
 
-          if (result.error) {
-            // Store query failed (network down, snap not published, etc.)
-            console.log("UPDATER: Snap Store query error:", result.error);
-            send("not-available", {
-              message: "Unable to check Snap Store \u2014 snapd will handle updates automatically",
-              info: { version: result.currentVersion },
+        if (snapInfo.ok && snapInfo.data?.result) {
+          // snapd-control is working — we have full access
+          console.log("UPDATER: snapd-control connected, checking for available refresh...");
+
+          // Ask snapd to check for a refresh for this specific snap
+          const refreshCheck = await snapdRequest("POST", "/v2/snaps", {
+            action: "refresh",
+            snaps: [snapName],
+          }, 60000);
+
+          if (refreshCheck.ok && refreshCheck.data?.change) {
+            // Refresh initiated — snapd returned a change ID to track
+            const changeId = refreshCheck.data.change;
+            console.log(`UPDATER: Snap refresh started (change ${changeId}), tracking progress...`);
+
+            send("available", { info: { version: "snap-update" } });
+            send("download-progress", { percent: 0 });
+
+            const result = await pollSnapdChange(changeId, (pct) => {
+              send("download-progress", { percent: pct });
             });
-          } else if (result.updateAvailable) {
-            console.log(`UPDATER: Snap update available: ${result.currentVersion} \u2192 ${result.storeVersion} (${result.channel})`);
-            send("not-available", {
-              message: `Update available (${result.storeVersion}) \u2014 snapd will install automatically`,
-              info: { version: result.storeVersion },
-            });
-          } else {
-            console.log("UPDATER: Snap is up to date:", result.currentVersion);
+
+            if (result.ok) {
+              console.log("UPDATER: Snap refresh completed successfully");
+              send("download-progress", { percent: 100 });
+              send("downloaded", { info: { version: "snap-updated" } });
+              // snapd will restart the daemon automatically after refresh
+            } else {
+              console.log(`UPDATER: Snap refresh failed: ${result.error}`);
+              send("error", { message: `Snap refresh failed: ${result.error}` });
+            }
+            return { ok: result.ok, snap: true };
+
+          } else if (refreshCheck.status === 400 && refreshCheck.data?.result?.message?.includes("snap has no updates")) {
+            // snapd explicitly says no updates available
+            console.log("UPDATER: Snap is up to date (snapd confirmed)");
             send("not-available", {
               message: "No updates available.",
-              info: { version: result.currentVersion },
+              info: { version: currentVersion },
+            });
+            return { ok: true, snap: true };
+
+          } else if (refreshCheck.data?.result?.message) {
+            // Some other snapd response (e.g. "snap not installed")
+            console.log(`UPDATER: snapd refresh response: ${refreshCheck.data.result.message}`);
+            send("not-available", {
+              message: refreshCheck.data.result.message,
+              info: { version: currentVersion },
+            });
+            return { ok: true, snap: true };
+
+          } else {
+            console.log("UPDATER: Unexpected snapd response:", JSON.stringify(refreshCheck.data));
+            send("not-available", {
+              message: "Unable to check for updates via snapd",
+              info: { version: currentVersion },
+            });
+            return { ok: false, snap: true };
+          }
+
+        } else {
+          // ── Step 2: Fallback to Snap Store HTTP API (read-only) ───────
+          console.log(`UPDATER: snapd-control not available (${snapInfo.error || "HTTP " + snapInfo.status}), falling back to Snap Store API...`);
+
+          try {
+            const storeResult = await checkSnapStoreUpdates();
+            console.log("UPDATER: Snap Store check result:", JSON.stringify(storeResult));
+
+            if (storeResult.error) {
+              send("not-available", {
+                message: `Unable to check for updates — snapd will handle updates automatically`,
+                info: { version: currentVersion },
+              });
+            } else if (storeResult.updateAvailable) {
+              console.log(`UPDATER: Snap update available: ${currentVersion} → ${storeResult.storeVersion} (${storeResult.channel})`);
+              send("not-available", {
+                message: `Update available (${storeResult.storeVersion}) — snapd will install automatically`,
+                info: { version: storeResult.storeVersion },
+              });
+            } else {
+              send("not-available", {
+                message: "No updates available.",
+                info: { version: currentVersion },
+              });
+            }
+          } catch (e) {
+            console.log("UPDATER: Snap Store fallback error:", e.message);
+            send("not-available", {
+              message: "Unable to check for updates — snapd will handle updates automatically",
+              info: { version: currentVersion },
             });
           }
-        } catch (e) {
-          console.log("UPDATER: Snap Store check exception:", e.message);
-          send("not-available", {
-            message: "Unable to check Snap Store \u2014 snapd will handle updates automatically",
-            info: { version: process.env.SNAP_VERSION || "unknown" },
-          });
+          return { ok: true, snap: true };
         }
-
-        return { ok: true, snap: true };
       }
 
       // Windows: use electron-updater
@@ -1595,7 +1697,32 @@ app.whenReady().then(async () => {
     
     console.log("UPDATER: Daily background update check scheduled (every 24 hours)");
   } else if (app.isPackaged && isUbuntuCoreSnap()) {
-    console.log("UPDATER: Running as SNAP - background updates handled by snapd refresh");
+    // Background snap update check — queries snapd every 6 hours and triggers
+    // a refresh if available. Snapd restarts the daemon automatically after refresh.
+    const SNAP_CHECK_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+    backgroundUpdateInterval = setInterval(async () => {
+      const snapName = process.env.SNAP_NAME;
+      if (!snapName) return;
+      try {
+        console.log("UPDATER: Running background snap update check...");
+        const refreshCheck = await snapdRequest("POST", "/v2/snaps", {
+          action: "refresh",
+          snaps: [snapName],
+        }, 60000);
+
+        if (refreshCheck.ok && refreshCheck.data?.change) {
+          console.log(`UPDATER: Background snap refresh started (change ${refreshCheck.data.change})`);
+          // Don't need to poll — snapd will restart the daemon when done
+        } else if (refreshCheck.status === 400 && refreshCheck.data?.result?.message?.includes("snap has no updates")) {
+          console.log("UPDATER: Background check — no updates available");
+        } else {
+          console.log("UPDATER: Background snap check response:", refreshCheck.data?.result?.message || refreshCheck.error || "unknown");
+        }
+      } catch (err) {
+        console.log("UPDATER: Background snap check error:", err.message);
+      }
+    }, SNAP_CHECK_INTERVAL);
+    console.log("UPDATER: Background snap update check scheduled (every 6 hours via snapd)");
   }
 
   app.on("activate", () => {

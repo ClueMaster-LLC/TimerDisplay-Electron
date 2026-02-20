@@ -50,9 +50,9 @@ export default function Splash() {
               updateInProgressRef.current = true;
               const remoteVersion = payload.info && payload.info.version ? payload.info.version : "unknown";
               setLatestVersion(remoteVersion);
-              // Check if it's a snap update
-              if (remoteVersion === "snap-update") {
-                setUpdateStatus("Snap update available — refreshing...");
+              // Check if it's a snap update (via snapd refresh)
+              if (remoteVersion === "snap-update" || remoteVersion === "snap-updated") {
+                setUpdateStatus("Snap update available — installing via snapd...");
               } else {
                 setUpdateStatus(`Update available (${remoteVersion}) — starting download...`);
               }
@@ -73,11 +73,12 @@ export default function Splash() {
               setDownloadPercent(100);
               const ver = payload.info && payload.info.version ? payload.info.version : "";
               if (ver === "snap-updated") {
-                setUpdateStatus("Snap updated. Restarting...");
+                setUpdateStatus("Snap updated successfully. Restarting automatically...");
               } else {
                 setUpdateStatus("Update downloaded. Installing and restarting...");
               }
-              // main process will quit & install; nothing else to do here
+              // Snap: snapd restarts the daemon automatically after refresh
+              // Windows: main process will quit & install; nothing else to do here
             } else if (t === "error") {
               // Log full error details to console for debugging
               try {
