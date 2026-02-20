@@ -417,8 +417,46 @@ if (envConfig.isLinux || envConfig.isSnap) {
 // Disable D-Bus accessibility (causes errors in SNAP)
 if (envConfig.isSnap) {
   process.env.AT_SPI2_CORE_NO_DBUS = '1';
-  // Don't set DBUS_SESSION_BUS_ADDRESS to empty string - Chromium tries to parse it
-  // The wrapper script handles unsetting it properly
+  // Set valid-format but non-existent socket to prevent parse errors
+  process.env.DBUS_SESSION_BUS_ADDRESS = 'unix:path=/dev/null';
+
+  // SNAP daemon runs as root - disable Chromium sandbox (snap strict confinement provides security)
+  app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('disable-gpu-sandbox');
+  app.commandLine.appendSwitch('no-zygote');
+  app.commandLine.appendSwitch('disable-dev-shm-usage');
+  app.commandLine.appendSwitch('in-process-gpu');
+
+  // Disable D-Bus features that require session bus (not available for daemons)
+  app.commandLine.appendSwitch('disable-features',
+    'HardwareMediaKeyHandling,' +
+    'MediaSessionService,' +
+    'SystemNotifications,' +
+    'GlobalMediaControls,' +
+    'GlobalMediaControlsForCast,' +
+    'GlobalMediaControlsPictureInPicture,' +
+    'AudioServiceOutOfProcess,' +
+    'MediaRouter'
+  );
+
+  // Disable additional D-Bus dependent services
+  app.commandLine.appendSwitch('disable-breakpad');
+  app.commandLine.appendSwitch('disable-component-update');
+  app.commandLine.appendSwitch('disable-background-networking');
+  app.commandLine.appendSwitch('disable-speech-api');
+  app.commandLine.appendSwitch('disable-sync');
+  app.commandLine.appendSwitch('disable-dbus');
+
+  // CRITICAL: Disable client-side decorations for ubuntu-frame compatibility
+  app.commandLine.appendSwitch('disable-features', 'WaylandWindowDecorations');
+
+  // Audio configuration for SNAP/Ubuntu Core
+  app.commandLine.appendSwitch('alsa-output-device', 'default');
+  app.commandLine.appendSwitch('audio-buffer-size', '4096');
+
+  console.log('SNAP detected: Chromium sandbox disabled (running as daemon)');
+  console.log('SNAP detected: Wayland/Ozone platform enabled');
+  console.log('SNAP detected: Hardware video decode enabled (VA-API)');
 }
 
 app.whenReady().then(async () => {

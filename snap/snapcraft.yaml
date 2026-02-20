@@ -397,7 +397,3 @@ layout:
     bind: $SNAP/usr/share/alsa
   /usr/lib/x86_64-linux-gnu/alsa-lib:
     bind: $SNAP/usr/lib/x86_64-linux-gnu/alsa-lib
-
-plugs:
-  removable-media:
-    read: all

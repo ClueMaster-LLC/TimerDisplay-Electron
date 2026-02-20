@@ -21,17 +21,33 @@ echo "SNAP=$SNAP"
 echo "SNAP_USER_DATA=$SNAP_USER_DATA"
 
 # ─── Ensure temp directory exists ──────────────────────────────────────────────
-mkdir -p "$SNAP_USER_DATA/tmp"
+# Chromium uses TMPDIR when --disable-dev-shm-usage is set (instead of /dev/shm)
+mkdir -p "$SNAP_USER_DATA/tmp" 2>/dev/null || true
+chmod 1777 "$SNAP_USER_DATA/tmp" 2>/dev/null || true
 export TMPDIR="$SNAP_USER_DATA/tmp"
 
 # ─── D-Bus workaround ─────────────────────────────────────────────────────────
-# Chromium/Electron tries to connect to D-Bus for accessibility (AT-SPI2).
-# On Ubuntu Core there is no session bus. Unset the variable so Chromium
-# does NOT try to parse an empty address string (which causes a crash).
-unset DBUS_SESSION_BUS_ADDRESS 2>/dev/null || true
+# Ubuntu Core daemons run without a session bus, causing Chromium to log errors.
+# Setting to a valid-format but non-existent socket prevents parse errors.
+# Chromium will silently fail to connect instead of crashing on parse.
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/dev/null"
 export NO_AT_BRIDGE=1
 export GTK_A11Y=none
 export AT_SPI2_CORE_NO_DBUS=1
+
+# ─── GLib/GIO D-Bus suppression ───────────────────────────────────────────────
+# Tell GIO/GLib to skip D-Bus entirely
+export GIO_USE_VFS=local
+export GVFS_DISABLE_FUSE=1
+
+# Disable portal/D-Bus features in GTK and other libraries
+export GTK_USE_PORTAL=0
+export GDK_DEBUG=no-portals
+
+# Use malloc allocator to avoid potential issues with GLib memory pools
+export G_SLICE=always-malloc
+# Don't make GLib warnings fatal
+export G_DEBUG=""
 
 # ─── ALSA / dmix Audio Configuration ──────────────────────────────────────────
 ASOUNDRC="$SNAP_USER_DATA/.asoundrc"
@@ -394,5 +410,49 @@ fi
 
 echo "Launching: apulse $ELECTRON_BIN"
 
-# Launch with apulse (PulseAudio emulation over ALSA - required for Chromium)
-exec "$SNAP/usr/bin/apulse" "$ELECTRON_BIN" "$@"
+# ─── Launch Electron with Chromium flags for snap confinement ─────────────────
+# Pass directly on command line - matches working VideoPlayer-Electron config.
+# D-Bus errors are unavoidable in daemon mode but harmless - filter them from logs.
+# Use apulse to provide PulseAudio API that redirects to ALSA
+# (Chromium/Electron requires PulseAudio, but apulse emulates it using ALSA)
+APULSE="$SNAP/usr/bin/apulse"
+if [ -x "$APULSE" ]; then
+    echo "Starting Electron with apulse (PulseAudio->ALSA wrapper)..."
+    exec $APULSE "$ELECTRON_BIN" \
+      --enable-features=UseOzonePlatform,VaapiVideoDecoder,VaapiVideoEncoder,VaapiVideoDecodeLinuxGL,PlatformHEVCDecoderSupport,PlatformHEVCEncoderSupport \
+      --disable-features=Accessibility,AccessibilityARIAVirtualContent,AccessibilityObjectModel,HardwareMediaKeyHandling,MediaSessionService,SystemNotifications,GlobalMediaControls,AudioServiceOutOfProcess \
+      --ozone-platform=wayland \
+      --enable-wayland-ime \
+      --no-sandbox \
+      --disable-setuid-sandbox \
+      --disable-gpu-sandbox \
+      --no-zygote \
+      --disable-dev-shm-usage \
+      --use-gl=angle \
+      --use-angle=gles \
+      --enable-accelerated-video-decode \
+      --disable-dbus \
+      --force-renderer-accessibility=off \
+      "$@" \
+      2>&1 | grep --line-buffered -v "dbus/bus.cc\|dbus/object_proxy.cc"
+else
+    echo "WARNING: apulse not found, audio may not work!"
+    echo "Starting Electron without audio wrapper..."
+    exec "$ELECTRON_BIN" \
+      --enable-features=UseOzonePlatform,VaapiVideoDecoder,VaapiVideoEncoder,VaapiVideoDecodeLinuxGL,PlatformHEVCDecoderSupport,PlatformHEVCEncoderSupport \
+      --disable-features=Accessibility,AccessibilityARIAVirtualContent,AccessibilityObjectModel,HardwareMediaKeyHandling,MediaSessionService,SystemNotifications,GlobalMediaControls,AudioServiceOutOfProcess \
+      --ozone-platform=wayland \
+      --enable-wayland-ime \
+      --no-sandbox \
+      --disable-setuid-sandbox \
+      --disable-gpu-sandbox \
+      --no-zygote \
+      --disable-dev-shm-usage \
+      --use-gl=angle \
+      --use-angle=gles \
+      --enable-accelerated-video-decode \
+      --disable-dbus \
+      --force-renderer-accessibility=off \
+      "$@" \
+      2>&1 | grep --line-buffered -v "dbus/bus.cc\|dbus/object_proxy.cc"
+fi
