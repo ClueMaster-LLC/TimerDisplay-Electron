@@ -1254,58 +1254,13 @@ app.whenReady().then(async () => {
       }
     };
     try {
-      // If running on Ubuntu Core as snap, use snapd refresh instead of electron-updater
+      // If running on Ubuntu Core as snap, snapd handles updates externally via snap refresh.
+      // The snap CLI is not accessible from inside strict confinement, so we simply report
+      // that updates are managed by the system and let the splash screen proceed.
       if (isUbuntuCoreSnap()) {
-        send("checking");
-        try {
-          // Get snap name from SNAP_NAME environment variable
-          const snapName = process.env.SNAP_NAME || "cluemaster-timer";
-          console.log("UPDATER: Running on Ubuntu Core snap, checking for snap updates:", snapName);
-
-          // Check if our specific snap has updates available (doesn't trigger updates)
-          const { stdout: refreshList } = await execAsync("snap refresh --list");
-          console.log("UPDATER: Available snap updates:", refreshList);
-
-          if (refreshList && refreshList.includes(snapName)) {
-            // Update available for our snap
-            send("available", { info: { version: "snap-update" } });
-            send("download-progress", { percent: 0 });
-
-            // Trigger snap refresh for our specific snap only (snapd handles download and install)
-            console.log("UPDATER: Snap update available, triggering refresh for", snapName);
-            const refreshProcess = exec(`snap refresh ${snapName}`);
-
-            // Monitor progress (snap doesn't provide detailed progress, simulate it)
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-              progress = Math.min(progress + 10, 90);
-              send("download-progress", { percent: progress });
-            }, 500);
-
-            refreshProcess.on("close", (code) => {
-              clearInterval(progressInterval);
-              if (code === 0) {
-                send("download-progress", { percent: 100 });
-                send("downloaded", { info: { version: "snap-updated" } });
-                // Snap will restart the app automatically
-                console.log("UPDATER: Snap refresh completed successfully");
-              } else {
-                send("error", { message: `Snap refresh failed with code ${code}` });
-              }
-            });
-
-            return { ok: true, snap: true };
-          } else {
-            // No updates available for our snap
-            console.log("UPDATER: No snap updates available for", snapName);
-            send("not-available", { info: { version: "current" } });
-            return { ok: true, snap: true };
-          }
-        } catch (e) {
-          console.log("UPDATER: Snap refresh check error", e);
-          send("error", { message: e && e.message ? e.message : String(e) });
-          return { ok: false, snap: true, error: e && e.message ? e.message : String(e) };
-        }
+        console.log("UPDATER: Running as snap - updates handled automatically by snapd");
+        send("not-available", { message: "Snap updates are managed automatically by snapd" });
+        return { ok: true, snap: true };
       }
 
       // Windows: use electron-updater
