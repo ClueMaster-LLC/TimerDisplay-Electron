@@ -11,7 +11,7 @@ export default function Idle() {
   useEffect(() => {
     const initializeWorkers = async () => {
       try {
-        await window.WorkersBackend.start(["updateRoom", "shutdownRestart", "screenshot"]);
+        await window.WorkersBackend.start(["updateRoom", "shutdownRestart"]);
       } catch (error) {
         console.error("Idle: Error initializing workers:", error);
       }
@@ -21,7 +21,7 @@ export default function Idle() {
 
     return () => {
       try {
-        window.WorkersBackend.stop(["updateRoom", "shutdownRestart", "screenshot"]);
+        window.WorkersBackend.stop(["updateRoom", "shutdownRestart"]);
       } catch (error) {
         console.error("Idle: Error stopping workers:", error);
       }

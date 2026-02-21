@@ -16,7 +16,7 @@ export default function Player() {
   useEffect(() => {
     const initializeWorkers = async () => {
       try {
-        await window.WorkersBackend.start(["gameInfo"]);
+        await window.WorkersBackend.start(["gameInfo", "screenshot"]);
       } catch (error) {
         console.error("Player: Failed to initialize workers:", error);
       }
@@ -42,7 +42,7 @@ export default function Player() {
     });
 
     return () => {
-      window.WorkersBackend.stop(["gameInfo"]);
+      window.WorkersBackend.stop(["gameInfo", "screenshot"]);
       workersEventHandler();
     };
   }, []);
