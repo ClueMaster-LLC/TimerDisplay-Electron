@@ -33,15 +33,20 @@ const clueMediaFilesDirectory = path.join(mediaFilesDirectory, "clue-media-files
 const uniqueCodeFile = path.join(configsData, "unique-code.json")
 
 // Legacy Python app paths (for migration on SNAP/Ubuntu Core)
-// Old structure: $SNAP_USER_DATA/CluemasterTimerDisplay/assets/application data/unique_code.json
-const legacyAssetsDir = config.isSnap ? path.join(masterDirectory, "assets") : null;
-const legacyAppDataDir = config.isSnap ? path.join(masterDirectory, "assets", "application data") : null;
-const legacyUniqueCodeFile = config.isSnap ? path.join(legacyAppDataDir, "unique_code.json") : null;
+// IMPORTANT: Old Python Timer Display snap used "CluemasterDisplay" directory,
+// NOT "CluemasterTimerDisplay" (the new Electron directory name).
+// Old structure: $SNAP_USER_DATA/CluemasterDisplay/assets/application data/unique_code.json
+const legacyMasterDir = config.legacyMasterDirectory || null;
+const legacyAssetsDir = config.legacyAssetsDirectory || (legacyMasterDir ? path.join(legacyMasterDir, "assets") : null);
+const legacyAppDataDir = config.legacyApplicationDataDirectory || (legacyMasterDir ? path.join(legacyMasterDir, "assets", "application data") : null);
+const legacyUniqueCodeFile = legacyAppDataDir ? path.join(legacyAppDataDir, "unique_code.json") : null;
 
 /**
  * Migrate legacy Python app configuration to new Electron app structure.
- * Old Python app stored configs in: assets/application data/unique_code.json
- * New Electron app stores configs in: device-configs/unique-code.json
+ * Old Python app (CluemasterDisplay) stored configs in:
+ *   $SNAP_USER_DATA/CluemasterDisplay/assets/application data/unique_code.json
+ * New Electron app (CluemasterTimerDisplay) stores configs in:
+ *   $SNAP_USER_DATA/CluemasterTimerDisplay/device-configs/unique-code.json
  * 
  * This ensures seamless upgrades from old Python snap to new Electron snap.
  */

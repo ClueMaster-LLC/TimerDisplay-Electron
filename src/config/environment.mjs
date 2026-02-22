@@ -80,11 +80,15 @@ const mediaFilesDirectory = applicationDataDirectory ? joinPath(applicationDataD
 const deviceConfigsDirectory = masterDirectory ? joinPath(masterDirectory, "device-configs") : undefined;
 
 // Legacy Python app paths (for SNAP migration compatibility)
-// Old Python app structure: $SNAP_USER_DATA/CluemasterTimerDisplay/assets/application data/
+// IMPORTANT: The old Python Timer Display snap used "CluemasterDisplay" as its directory name,
+// but the new Electron version uses "CluemasterTimerDisplay". These are DIFFERENT directories.
+// Old Python app structure: $SNAP_USER_DATA/CluemasterDisplay/assets/application data/
 // Old Python app stored registration at: assets/application data/unique_code.json
 // Old Python app stored media at: assets/application data/media/ or assets/media/
-const legacyAssetsDirectory = isSnap && masterDirectory ? joinPath(masterDirectory, "assets") : undefined;
-const legacyApplicationDataDirectory = isSnap && masterDirectory ? joinPath(masterDirectory, "assets", "application data") : undefined;
+const legacyAppDirName = "CluemasterDisplay";
+const legacyMasterDirectory = isSnap && snapUserData ? joinPath(snapUserData, legacyAppDirName) : undefined;
+const legacyAssetsDirectory = legacyMasterDirectory ? joinPath(legacyMasterDirectory, "assets") : undefined;
+const legacyApplicationDataDirectory = legacyMasterDirectory ? joinPath(legacyMasterDirectory, "assets", "application data") : undefined;
 
 export const config = {
   // Vite exposes env vars prefixed with VITE_ to the renderer
@@ -115,6 +119,9 @@ export const config = {
   deviceConfigsDirectory,
 
   // Legacy Python app paths (for SNAP migration)
+  // Old Python app used "CluemasterDisplay" dir, new Electron uses "CluemasterTimerDisplay"
+  legacyAppDirName,
+  legacyMasterDirectory,
   legacyAssetsDirectory,
   legacyApplicationDataDirectory,
 };
