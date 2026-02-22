@@ -1,6 +1,6 @@
 name: cluemaster-mediadisplay-core
 base: core24
-version: '2026.2.2-DEV'
+version: '2026.2.3-DEV'
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║  BUILD MODE: Change to 'prod' for production builds                       ║

@@ -1,7 +1,7 @@
 {
   "name": "cluemaster-timer",
   "private": true,
-  "version": "2026.2.2",
+  "version": "2026.2.3",
   "type": "module",
   "author": "Cluemaster-LLC",
   "main": "electron/main.mjs",
@@ -14,10 +14,10 @@
     "build:prod": "node build-scripts/inject-env.mjs production && vite build --mode production",
     "cleanup-releases": "node build-scripts/cleanup-releases.mjs",
     "cleanup-releases:all": "node build-scripts/cleanup-releases.mjs ALL",
-    "publish:dev": "npm run build:dev && electron-builder --win --x64 --publish always --config.appId=\"com.cluemaster.timer.dev\" --config.directories.output=\"dist-dev\" --config.publish.repo=\"TimerDisplay-Updates-Dev\" && node build-scripts/cleanup-releases.mjs TimerDisplay-Updates-Dev",
-    "publish:prod": "npm run build:prod && electron-builder --win --x64 --publish always --config.appId=\"com.cluemaster.timer.prod\" --config.productName=\"ClueMaster-Timer-Display\" --config.directories.output=\"dist-prod\" --config.publish.repo=\"TimerDisplay-Updates\" && node build-scripts/cleanup-releases.mjs TimerDisplay-Updates",
-    "package:dev": "npm run build:dev && electron-builder --win --x64 --publish never --config.appId=\"com.cluemaster.timer.dev\" --config.directories.output=\"dist-dev\"",
-    "package:prod": "npm run build:prod && electron-builder --win --x64 --publish never --config.appId=\"com.cluemaster.timer.prod\" --config.productName=\"ClueMaster-Timer-Display\" --config.directories.output=\"dist-prod\"",
+    "publish:dev": "npm run build:dev && electron-builder --win --x64 --publish always --config.appId=\"com.cluemaster.timer.dev\" --config.directories.output=\"dist-dev\" --config.publish.repo=\"TimerDisplay-Updates-Dev\" && node build-scripts/cleanup-releases.mjs TimerDisplay-Updates-Dev && node build-scripts/reset-env.mjs",
+    "publish:prod": "npm run build:prod && electron-builder --win --x64 --publish always --config.appId=\"com.cluemaster.timer.prod\" --config.productName=\"ClueMaster-Timer-Display\" --config.directories.output=\"dist-prod\" --config.publish.repo=\"TimerDisplay-Updates\" && node build-scripts/cleanup-releases.mjs TimerDisplay-Updates && node build-scripts/reset-env.mjs",
+    "package:dev": "npm run build:dev && electron-builder --win --x64 --publish never --config.appId=\"com.cluemaster.timer.dev\" --config.directories.output=\"dist-dev\" && node build-scripts/reset-env.mjs",
+    "package:prod": "npm run build:prod && electron-builder --win --x64 --publish never --config.appId=\"com.cluemaster.timer.prod\" --config.productName=\"ClueMaster-Timer-Display\" --config.directories.output=\"dist-prod\" && node build-scripts/reset-env.mjs",
     "reset-env": "node build-scripts/reset-env.mjs",
     "update-ffmpeg": "node build-scripts/update-ffmpeg-win.mjs"
   },
