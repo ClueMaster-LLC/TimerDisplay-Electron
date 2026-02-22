@@ -79,6 +79,13 @@ const applicationDataDirectory = masterDirectory ? joinPath(masterDirectory, "ap
 const mediaFilesDirectory = applicationDataDirectory ? joinPath(applicationDataDirectory, "media-files") : undefined;
 const deviceConfigsDirectory = masterDirectory ? joinPath(masterDirectory, "device-configs") : undefined;
 
+// Legacy Python app paths (for SNAP migration compatibility)
+// Old Python app structure: $SNAP_USER_DATA/CluemasterTimerDisplay/assets/application data/
+// Old Python app stored registration at: assets/application data/unique_code.json
+// Old Python app stored media at: assets/application data/media/ or assets/media/
+const legacyAssetsDirectory = isSnap && masterDirectory ? joinPath(masterDirectory, "assets") : undefined;
+const legacyApplicationDataDirectory = isSnap && masterDirectory ? joinPath(masterDirectory, "assets", "application data") : undefined;
+
 export const config = {
   // Vite exposes env vars prefixed with VITE_ to the renderer
   apiBaseUrl: env.VITE_API_BASE_URL,
@@ -106,6 +113,10 @@ export const config = {
   applicationDataDirectory,
   mediaFilesDirectory,
   deviceConfigsDirectory,
+
+  // Legacy Python app paths (for SNAP migration)
+  legacyAssetsDirectory,
+  legacyApplicationDataDirectory,
 };
 
 // For debugging (remove in production)

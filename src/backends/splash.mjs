@@ -30,18 +30,122 @@ const configsData = config.deviceConfigsDirectory || path.join(masterDirectory, 
 const mediaFilesDirectory = config.mediaFilesDirectory || path.join(applicationData, "media-files")
 const roomMediaFilesDirectory = path.join(mediaFilesDirectory, "room-media-files")
 const clueMediaFilesDirectory = path.join(mediaFilesDirectory, "clue-media-files")
-const uniqueCode = path.join(configsData, "unique-code.json")
+const uniqueCodeFile = path.join(configsData, "unique-code.json")
+
+// Legacy Python app paths (for migration on SNAP/Ubuntu Core)
+// Old structure: $SNAP_USER_DATA/CluemasterTimerDisplay/assets/application data/unique_code.json
+const legacyAssetsDir = config.isSnap ? path.join(masterDirectory, "assets") : null;
+const legacyAppDataDir = config.isSnap ? path.join(masterDirectory, "assets", "application data") : null;
+const legacyUniqueCodeFile = config.isSnap ? path.join(legacyAppDataDir, "unique_code.json") : null;
+
+/**
+ * Migrate legacy Python app configuration to new Electron app structure.
+ * Old Python app stored configs in: assets/application data/unique_code.json
+ * New Electron app stores configs in: device-configs/unique-code.json
+ * 
+ * This ensures seamless upgrades from old Python snap to new Electron snap.
+ */
+async function migrateLegacyConfig() {
+    if (!config.isSnap || !legacyUniqueCodeFile) {
+        return null; // Only run migration on SNAP environments
+    }
+
+    try {
+        if (!fs.existsSync(legacyUniqueCodeFile)) {
+            console.log("Splash: No legacy unique_code.json found, skipping migration");
+            return null;
+        }
+
+        console.log("Splash: Found legacy Python app config, migrating to new structure...");
+        console.log("Splash: Legacy file:", legacyUniqueCodeFile);
+
+        // Read the old unique_code.json
+        const legacyContent = await fs.promises.readFile(legacyUniqueCodeFile, 'utf-8');
+        const legacyData = JSON.parse(legacyContent);
+        
+        console.log("Splash: Legacy data keys:", Object.keys(legacyData));
+
+        // Extract unique code and API token from legacy format
+        // Old Python app used keys with spaces: "Device Unique Code", "apiKey", "IPv4 Address"
+        const uniqueCode = legacyData["Device Unique Code"] || legacyData.uniqueCode || legacyData.unique_code || legacyData.deviceKey || legacyData.device_key;
+        const apiToken = legacyData.apiKey || legacyData.APIToken || legacyData.apiToken || legacyData.api_token || legacyData.api_key;
+        const networkAddress = legacyData["IPv4 Address"] || legacyData.networkAddress || legacyData.network_address || legacyData.ipAddress || legacyData.ip_address;
+
+        if (!uniqueCode) {
+            console.log("Splash: Legacy file found but no unique code detected, cannot migrate");
+            console.log("Splash: Legacy data contents:", JSON.stringify(legacyData, null, 2));
+            return null;
+        }
+
+        // Create new directory structure
+        await fs.promises.mkdir(configsData, { recursive: true });
+
+        // Create new unique-code.json with migrated data
+        const newConfigData = {
+            uniqueCode: uniqueCode,
+            APIToken: apiToken || null,
+            networkAddress: networkAddress || null,
+            migratedFrom: "legacy-python-app",
+            migratedAt: new Date().toISOString()
+        };
+
+        await fs.promises.writeFile(uniqueCodeFile, JSON.stringify(newConfigData, null, 2), 'utf-8');
+        console.log("Splash: Successfully migrated legacy config to:", uniqueCodeFile);
+        console.log("Splash: Migrated unique code:", uniqueCode);
+
+        // Keep legacy config file intact for rollback compatibility
+        // If we need to revert to the old Python snap, the original file will still exist
+        console.log("Splash: Legacy config file preserved at:", legacyUniqueCodeFile);
+
+        // Delete old media folder to avoid duplicates (media will re-download automatically)
+        const legacyMediaDir = path.join(legacyAssetsDir, "media");
+        try {
+            if (fs.existsSync(legacyMediaDir)) {
+                await fs.promises.rm(legacyMediaDir, { recursive: true, force: true });
+                console.log("Splash: Deleted legacy media folder:", legacyMediaDir);
+            }
+        } catch (mediaErr) {
+            console.log("Splash: Could not delete legacy media folder (non-critical):", mediaErr.message);
+        }
+
+        // Also check for legacy "application data/media" folder
+        const legacyAppDataMediaDir = path.join(legacyAppDataDir, "media");
+        try {
+            if (fs.existsSync(legacyAppDataMediaDir)) {
+                await fs.promises.rm(legacyAppDataMediaDir, { recursive: true, force: true });
+                console.log("Splash: Deleted legacy app data media folder:", legacyAppDataMediaDir);
+            }
+        } catch (mediaErr) {
+            console.log("Splash: Could not delete legacy app data media folder (non-critical):", mediaErr.message);
+        }
+
+        return newConfigData;
+    } catch (error) {
+        console.error("Splash: Error during legacy config migration:", error.message);
+        return null;
+    }
+}
 
 ipcMain.handle("splash:worker", async() => {
     // Ensure all required directories exist on startup
+    // (masterDirectory may exist from old Python app but device-configs and application-data might not)
     await fs.promises.mkdir(masterDirectory, {recursive: true})
     await fs.promises.mkdir(applicationData, {recursive: true})
     await fs.promises.mkdir(configsData, {recursive: true})
     await fs.promises.mkdir(mediaFilesDirectory, {recursive: true})
     await fs.promises.mkdir(roomMediaFilesDirectory, {recursive: true})
     await fs.promises.mkdir(clueMediaFilesDirectory, {recursive: true})
-    if (fs.existsSync(uniqueCode)){
-        const rawUniqueCodeFile = await fs.promises.readFile(uniqueCode, 'utf-8')
+
+    // Attempt to migrate legacy Python app config before checking for new config
+    if (!fs.existsSync(uniqueCodeFile)) {
+        const migratedConfig = await migrateLegacyConfig();
+        if (migratedConfig) {
+            console.log("Splash: Using migrated legacy configuration");
+        }
+    }
+
+    if (fs.existsSync(uniqueCodeFile)){
+        const rawUniqueCodeFile = await fs.promises.readFile(uniqueCodeFile, 'utf-8')
         const rawUniqueCodeFileData = JSON.parse(rawUniqueCodeFile)
         const rawUniqueCode = rawUniqueCodeFileData["uniqueCode"]
         const rawAPIKey = rawUniqueCodeFileData["APIToken"]
@@ -64,7 +168,7 @@ ipcMain.handle("splash:worker", async() => {
 
                     // writing updated api token to uniqueCode.json
                     const configsObject = {"uniqueCode": newUniqueCode, "APIToken": newAPIToken}
-                    await fs.promises.writeFile(uniqueCode, JSON.stringify(configsObject, null, 2), 'utf-8')
+                    await fs.promises.writeFile(uniqueCodeFile, JSON.stringify(configsObject, null, 2), 'utf-8')
 
                     // authenticate device
                     const window = getMainWindow()
@@ -102,7 +206,7 @@ ipcMain.handle("splash:worker", async() => {
         await fs.promises.mkdir(configsData, {recursive: true})
         
         // writing new configs to uniqueCode.json
-        await fs.promises.writeFile(uniqueCode, JSON.stringify(configsObject, null, 2), 'utf-8')
+        await fs.promises.writeFile(uniqueCodeFile, JSON.stringify(configsObject, null, 2), 'utf-8')
         console.log("Splash: New configs : ", configsObject)
 
         // authenticate device
